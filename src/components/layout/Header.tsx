@@ -14,6 +14,7 @@ import {
   MoreVertical,
   LogIn,
   Cloud,
+  Sparkles,
 } from 'lucide-react';
 import { useApp } from '../../state';
 import { useAuth } from '../../auth';
@@ -40,6 +41,9 @@ export const Header: React.FC = () => {
     toggleDistractionFree,
     toggleRightPanel,
     rightPanelOpen,
+    setCurrentView,
+    setRightPanelOpen,
+    setRightPanelTab,
   } = useApp();
 
   const {
@@ -145,6 +149,23 @@ export const Header: React.FC = () => {
           <span className="hidden md:inline font-mono text-[10px] bg-stone-100 dark:bg-stone-800 px-1.5 py-0.5 rounded text-stone-400">
             ⌘K
           </span>
+        </button>
+
+        {/* AI Companion Quick Trigger */}
+        <button
+          onClick={() => {
+            if (currentView === 'document') {
+              setRightPanelTab('ai');
+              setRightPanelOpen(true);
+            } else {
+              setCurrentView('ai');
+            }
+          }}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-amber-500/10 to-amber-600/20 text-amber-900 dark:text-amber-300 hover:from-amber-500/20 hover:to-amber-600/30 transition-all border border-amber-500/30"
+          title="Open AI Writing Companion"
+        >
+          <Sparkles className="w-4 h-4 text-amber-500" />
+          <span className="hidden sm:inline">AI Assistant</span>
         </button>
 
         {/* Save / Sync status badge */}

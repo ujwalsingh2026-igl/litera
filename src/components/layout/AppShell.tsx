@@ -1,10 +1,12 @@
-import React, { type ReactNode } from 'react';
+import React, { type ReactNode, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { MobileNav } from './MobileNav';
 import { MobileDrawer } from './MobileDrawer';
 import { RightPanel } from './RightPanel';
 import { SearchModal } from './SearchModal';
+import { GlobalAiFab } from '../ai/GlobalAiFab';
+import { GlobalAiModal } from '../ai/GlobalAiModal';
 import { useApp } from '../../state';
 import { Eye } from 'lucide-react';
 
@@ -14,6 +16,7 @@ interface AppShellProps {
 
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const { isStorageReady, distractionFree, toggleDistractionFree, currentView } = useApp();
+  const [aiModalOpen, setAiModalOpen] = useState(false);
 
   if (!isStorageReady) {
     return (
@@ -28,6 +31,9 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     <div className="flex h-screen w-screen overflow-hidden bg-stone-50/50 dark:bg-stone-950 font-sans text-stone-900 dark:text-stone-100 antialiased">
       {/* Search Modal (Ctrl/Cmd + K) */}
       <SearchModal />
+
+      {/* Global Universal AI Modal */}
+      <GlobalAiModal isOpen={aiModalOpen} onClose={() => setAiModalOpen(false)} />
 
       {/* Desktop / Tablet Sidebar */}
       <Sidebar />
@@ -63,6 +69,11 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         {/* Mobile / Foldable Bottom Navigation */}
         <MobileNav />
 
+        {/* Global Floating AI Button - Available Everywhere */}
+        {!distractionFree && (
+          <GlobalAiFab onClick={() => setAiModalOpen(true)} />
+        )}
+
         {/* Floating exit control for Distraction-Free Mode */}
         {distractionFree && (
           <button
@@ -81,3 +92,4 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
     </div>
   );
 };
+
