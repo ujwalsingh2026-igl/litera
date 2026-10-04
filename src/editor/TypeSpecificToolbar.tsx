@@ -18,6 +18,8 @@ interface TypeSpecificToolbarProps {
   onUpdateMetadata: (metadata: DocumentTypeMetadata) => void;
 }
 
+const safeChain = (ed: Editor) => (ed.isFocused ? ed.chain().focus() : ed.chain());
+
 export const TypeSpecificToolbar: React.FC<TypeSpecificToolbarProps> = ({
   editor,
   document: doc,
@@ -30,65 +32,51 @@ export const TypeSpecificToolbar: React.FC<TypeSpecificToolbarProps> = ({
 
   // Script Actions
   const insertSceneHeading = (type: 'INT' | 'EXT') => {
-    editor
-      .chain()
-      .focus()
+    safeChain(editor)
       .insertContent(`<p><strong>${type}. LOCATION - DAY</strong></p>`)
       .run();
   };
 
   const insertCharacterCue = () => {
-    editor
-      .chain()
-      .focus()
+    safeChain(editor)
       .insertContent('<p style="text-align: center;"><strong>CHARACTER NAME</strong></p><p style="text-align: center;"><em>(beat)</em></p><p style="text-align: center;">Dialogue goes here...</p>')
       .run();
   };
 
   const insertTransition = (trans = 'CUT TO:') => {
-    editor
-      .chain()
-      .focus()
+    safeChain(editor)
       .insertContent(`<p style="text-align: right;"><strong>${trans}</strong></p>`)
       .run();
   };
 
   // Comic Actions
   const insertComicPanel = () => {
-    editor
-      .chain()
-      .focus()
+    safeChain(editor)
       .insertContent('<p><strong>PANEL (MEDIUM SHOT)</strong></p><p>Description of action in the panel...</p><p><strong>CAPTION:</strong> Narrator text...</p>')
       .run();
   };
 
   const insertComicSFX = () => {
-    editor
-      .chain()
-      .focus()
+    safeChain(editor)
       .insertContent('<p><strong>SFX:</strong> <em>*BOOM*</em></p>')
       .run();
   };
 
   // Poem Actions
   const insertStanzaBreak = () => {
-    editor
-      .chain()
-      .focus()
+    safeChain(editor)
       .insertContent('<p style="text-align: center;"><br/></p>')
       .run();
   };
 
   const centerVerse = () => {
-    editor.chain().focus().setTextAlign('center').run();
+    safeChain(editor).setTextAlign('center').run();
   };
 
   // Journal Actions
   const insertTimestamp = () => {
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    editor
-      .chain()
-      .focus()
+    safeChain(editor)
       .insertContent(`<p><strong>[${timeStr}]</strong> `)
       .run();
   };
@@ -105,9 +93,7 @@ export const TypeSpecificToolbar: React.FC<TypeSpecificToolbarProps> = ({
 
   // Novel Actions
   const insertSceneBreak = () => {
-    editor
-      .chain()
-      .focus()
+    safeChain(editor)
       .insertContent('<p style="text-align: center; margin: 1.5rem 0;">* * *</p>')
       .run();
   };
@@ -184,7 +170,7 @@ export const TypeSpecificToolbar: React.FC<TypeSpecificToolbarProps> = ({
             + SFX Burst
           </button>
           <button
-            onClick={() => editor.chain().focus().insertContent('<h2>PAGE </h2>').run()}
+            onClick={() => safeChain(editor).insertContent('<h2>PAGE </h2>').run()}
             className="px-2 py-0.5 rounded bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 hover:bg-stone-50 text-[11px]"
           >
             + New Page
@@ -307,13 +293,13 @@ export const TypeSpecificToolbar: React.FC<TypeSpecificToolbarProps> = ({
             Quick Note:
           </span>
           <button
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
+            onClick={() => safeChain(editor).toggleBulletList().run()}
             className="px-2 py-0.5 rounded bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 hover:bg-stone-50 text-[11px]"
           >
             + Bullet Item
           </button>
           <button
-            onClick={() => editor.chain().focus().toggleHighlight().run()}
+            onClick={() => safeChain(editor).toggleHighlight().run()}
             className="px-2 py-0.5 rounded bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 hover:bg-stone-50 text-[11px]"
           >
             Highlight Key Idea

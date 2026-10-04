@@ -39,6 +39,8 @@ interface EditorToolbarProps {
   className?: string;
 }
 
+const safeChain = (ed: Editor) => (ed.isFocused ? ed.chain().focus() : ed.chain());
+
 export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   editor,
   onToggleFindReplace,
@@ -57,21 +59,21 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
     const url = window.prompt('Enter URL:', previousUrl);
     if (url === null) return;
     if (url === '') {
-      editor.chain().focus().extendMarkRange('link').unsetLink().run();
+      safeChain(editor).extendMarkRange('link').unsetLink().run();
       return;
     }
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+    safeChain(editor).extendMarkRange('link').setLink({ href: url }).run();
   };
 
   const addImage = () => {
     const url = window.prompt('Enter Image URL:');
     if (url) {
-      editor.chain().focus().setImage({ src: url }).run();
+      safeChain(editor).setImage({ src: url }).run();
     }
   };
 
   const insertTable = () => {
-    editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+    safeChain(editor).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
   };
 
   const colors = ['#1c1917', '#78716c', '#b45309', '#15803d', '#0369a1', '#b91c1c', '#7c3aed'];
@@ -86,7 +88,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
       {/* History Group */}
       <div className="flex items-center gap-0.5 pr-1.5 border-r border-stone-200 dark:border-stone-800">
         <button
-          onClick={() => editor.chain().focus().undo().run()}
+          onClick={() => safeChain(editor).undo().run()}
           disabled={!editor.can().undo()}
           className="p-1.5 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 transition"
           title="Undo (Ctrl+Z)"
@@ -94,7 +96,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
           <Undo2 className="w-4 h-4" />
         </button>
         <button
-          onClick={() => editor.chain().focus().redo().run()}
+          onClick={() => safeChain(editor).redo().run()}
           disabled={!editor.can().redo()}
           className="p-1.5 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 transition"
           title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
@@ -118,11 +120,11 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         }
         onChange={(e) => {
           const val = e.target.value;
-          if (val === 'paragraph') editor.chain().focus().setParagraph().run();
-          else if (val === 'h1') editor.chain().focus().toggleHeading({ level: 1 }).run();
-          else if (val === 'h2') editor.chain().focus().toggleHeading({ level: 2 }).run();
-          else if (val === 'h3') editor.chain().focus().toggleHeading({ level: 3 }).run();
-          else if (val === 'quote') editor.chain().focus().toggleBlockquote().run();
+          if (val === 'paragraph') safeChain(editor).setParagraph().run();
+          else if (val === 'h1') safeChain(editor).toggleHeading({ level: 1 }).run();
+          else if (val === 'h2') safeChain(editor).toggleHeading({ level: 2 }).run();
+          else if (val === 'h3') safeChain(editor).toggleHeading({ level: 3 }).run();
+          else if (val === 'quote') safeChain(editor).toggleBlockquote().run();
         }}
         className="px-2 py-1 text-xs bg-stone-100 dark:bg-stone-800 border-none rounded-md outline-none cursor-pointer font-medium mx-1"
       >
@@ -136,7 +138,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
       {/* Basic Marks */}
       <div className="flex items-center gap-0.5 px-1 border-r border-stone-200 dark:border-stone-800">
         <button
-          onClick={() => editor.chain().focus().toggleBold().run()}
+          onClick={() => safeChain(editor).toggleBold().run()}
           className={cn(
             'p-1.5 rounded-md transition',
             editor.isActive('bold')
@@ -149,7 +151,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
-          onClick={() => editor.chain().focus().toggleItalic().run()}
+          onClick={() => safeChain(editor).toggleItalic().run()}
           className={cn(
             'p-1.5 rounded-md transition',
             editor.isActive('italic')
@@ -162,7 +164,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
-          onClick={() => editor.chain().focus().toggleUnderline().run()}
+          onClick={() => safeChain(editor).toggleUnderline().run()}
           className={cn(
             'p-1.5 rounded-md transition',
             editor.isActive('underline')
@@ -175,7 +177,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
-          onClick={() => editor.chain().focus().toggleStrike().run()}
+          onClick={() => safeChain(editor).toggleStrike().run()}
           className={cn(
             'p-1.5 rounded-md transition',
             editor.isActive('strike')
@@ -188,7 +190,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
-          onClick={() => editor.chain().focus().toggleHighlight().run()}
+          onClick={() => safeChain(editor).toggleHighlight().run()}
           className={cn(
             'p-1.5 rounded-md transition',
             editor.isActive('highlight')
@@ -216,7 +218,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
                   key={c}
                   style={{ backgroundColor: c }}
                   onClick={() => {
-                    editor.chain().focus().setColor(c).run();
+                    safeChain(editor).setColor(c).run();
                     setShowColorPicker(false);
                   }}
                   className="w-5 h-5 rounded-full border border-stone-200 dark:border-stone-700 hover:scale-110 transition"
@@ -230,7 +232,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
       {/* Alignment Group */}
       <div className="flex items-center gap-0.5 px-1 border-r border-stone-200 dark:border-stone-800">
         <button
-          onClick={() => editor.chain().focus().setTextAlign('left').run()}
+          onClick={() => safeChain(editor).setTextAlign('left').run()}
           className={cn(
             'p-1.5 rounded-md transition',
             editor.isActive({ textAlign: 'left' })
@@ -243,7 +245,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
-          onClick={() => editor.chain().focus().setTextAlign('center').run()}
+          onClick={() => safeChain(editor).setTextAlign('center').run()}
           className={cn(
             'p-1.5 rounded-md transition',
             editor.isActive({ textAlign: 'center' })
@@ -256,7 +258,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
-          onClick={() => editor.chain().focus().setTextAlign('right').run()}
+          onClick={() => safeChain(editor).setTextAlign('right').run()}
           className={cn(
             'p-1.5 rounded-md transition',
             editor.isActive({ textAlign: 'right' })
@@ -269,7 +271,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
-          onClick={() => editor.chain().focus().setTextAlign('justify').run()}
+          onClick={() => safeChain(editor).setTextAlign('justify').run()}
           className={cn(
             'p-1.5 rounded-md transition',
             editor.isActive({ textAlign: 'justify' })
@@ -285,7 +287,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
       {/* Lists & Quotes */}
       <div className="flex items-center gap-0.5 px-1 border-r border-stone-200 dark:border-stone-800">
         <button
-          onClick={() => editor.chain().focus().toggleBulletList().run()}
+          onClick={() => safeChain(editor).toggleBulletList().run()}
           className={cn(
             'p-1.5 rounded-md transition',
             editor.isActive('bulletList')
@@ -298,7 +300,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
-          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          onClick={() => safeChain(editor).toggleOrderedList().run()}
           className={cn(
             'p-1.5 rounded-md transition',
             editor.isActive('orderedList')
@@ -311,7 +313,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
-          onClick={() => editor.chain().focus().toggleBlockquote().run()}
+          onClick={() => safeChain(editor).toggleBlockquote().run()}
           className={cn(
             'p-1.5 rounded-md transition',
             editor.isActive('blockquote')
@@ -324,7 +326,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
-          onClick={() => editor.chain().focus().setHorizontalRule().run()}
+          onClick={() => safeChain(editor).setHorizontalRule().run()}
           className="p-1.5 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 transition"
           title="Horizontal Rule Separator"
         >
@@ -335,7 +337,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
       {/* Sub/Superscript */}
       <div className="flex items-center gap-0.5 px-1 border-r border-stone-200 dark:border-stone-800">
         <button
-          onClick={() => editor.chain().focus().toggleSubscript().run()}
+          onClick={() => safeChain(editor).toggleSubscript().run()}
           className={cn(
             'p-1.5 rounded-md transition',
             editor.isActive('subscript')
@@ -348,7 +350,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
-          onClick={() => editor.chain().focus().toggleSuperscript().run()}
+          onClick={() => safeChain(editor).toggleSuperscript().run()}
           className={cn(
             'p-1.5 rounded-md transition',
             editor.isActive('superscript')
