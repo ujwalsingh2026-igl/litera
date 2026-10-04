@@ -11,6 +11,8 @@ import { documentService } from '../services/documentService';
 import { bookService } from '../services/bookService';
 import { calculateEnhancedStats, getDefaultMetadataForType } from './documentTemplates';
 import { FocusModeHUD, type FocusDepth } from '../components/focus/FocusModeHUD';
+import { ExportManuscriptModal } from '../components/export/ExportManuscriptModal';
+import { AuthorSignatureModal } from '../components/signature/AuthorSignatureModal';
 import type { Document, DocumentStats, DocumentType, DocumentTypeMetadata, Chapter } from '../types';
 import './editor.css';
 
@@ -37,6 +39,8 @@ export const LiteriaEditor: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsaved, setHasUnsaved] = useState(false);
   const [findReplaceOpen, setFindReplaceOpen] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const [bookChapters, setBookChapters] = useState<Chapter[]>([]);
   const [focusDepth, setFocusDepth] = useState<FocusDepth>('off');
@@ -91,8 +95,9 @@ export const LiteriaEditor: React.FC = () => {
     editorProps: {
       attributes: {
         class:
-          'focus:outline-none min-h-[500px] prose prose-stone dark:prose-invert max-w-none font-serif text-stone-800 dark:text-stone-200 text-lg leading-relaxed selection:bg-amber-100 dark:selection:bg-amber-900/40',
+          'focus:outline-none min-h-[500px] max-w-none font-serif text-[var(--color-text-primary)] text-lg leading-relaxed selection:bg-amber-100 dark:selection:bg-amber-900/40',
       },
+
     },
     onUpdate: ({ editor: currentEditor }) => {
       setHasUnsaved(true);
@@ -301,6 +306,8 @@ export const LiteriaEditor: React.FC = () => {
           <EditorToolbar
             editor={editor}
             onToggleFindReplace={() => setFindReplaceOpen((prev) => !prev)}
+            onOpenExport={() => setExportModalOpen(true)}
+            onOpenSignature={() => setSignatureModalOpen(true)}
           />
 
           {/* Type-Specific Specialized Toolbar */}
@@ -468,6 +475,18 @@ export const LiteriaEditor: React.FC = () => {
         stats={stats}
         isSaving={isSaving}
         hasUnsaved={hasUnsaved}
+      />
+
+      {/* Export & Signature Modals */}
+      <ExportManuscriptModal
+        isOpen={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        document={doc}
+      />
+
+      <AuthorSignatureModal
+        isOpen={signatureModalOpen}
+        onClose={() => setSignatureModalOpen(false)}
       />
     </div>
   );

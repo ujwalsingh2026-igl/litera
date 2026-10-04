@@ -3,14 +3,17 @@ import { useApp } from '../state';
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { APP_CONFIG } from '../config/app.config';
-import { Cpu, Shield, Database, Sliders } from 'lucide-react';
+import { Cpu, Shield, Database, Sliders, PenTool } from 'lucide-react';
 import { ThemeCustomizer } from '../components/theme/ThemeCustomizer';
 import { DesignSystemShowcase } from '../components/design-system/DesignSystemShowcase';
 import { Tabs } from '../components/ui/Tabs';
+import { Button } from '../components/ui/Button';
+import { AuthorSignatureModal } from '../components/signature/AuthorSignatureModal';
 
 export const SettingsView: React.FC = () => {
   const { settings, updateSettings } = useApp();
   const [activeTab, setActiveTab] = useState<'themes' | 'preferences' | 'design-system'>('themes');
+  const [sigModalOpen, setSigModalOpen] = useState(false);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto py-2">
@@ -126,6 +129,28 @@ export const SettingsView: React.FC = () => {
             </div>
           </Card>
 
+          {/* Author Signature & Watermark Studio Section */}
+          <Card>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300">
+                  <PenTool className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+                    Author Signature & Export Watermark
+                  </h3>
+                  <p className="text-xs text-stone-500 dark:text-stone-400">
+                    Configure your calligraphic pen name, drawn signature, or image watermark for PDF & print exports.
+                  </p>
+                </div>
+              </div>
+              <Button size="sm" variant="secondary" onClick={() => setSigModalOpen(true)}>
+                Configure Signature
+              </Button>
+            </div>
+          </Card>
+
           {/* AI Configuration Section */}
           <Card>
             <div className="flex items-center gap-3 mb-3">
@@ -187,6 +212,9 @@ export const SettingsView: React.FC = () => {
 
       {/* Tab 3: Design System Tokens */}
       {activeTab === 'design-system' && <DesignSystemShowcase />}
+
+      {/* Signature Studio Modal */}
+      <AuthorSignatureModal isOpen={sigModalOpen} onClose={() => setSigModalOpen(false)} />
     </div>
   );
 };

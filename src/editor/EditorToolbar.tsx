@@ -22,18 +22,24 @@ import {
   Search,
   Subscript as SubscriptIcon,
   Superscript as SuperscriptIcon,
+  Printer,
+  PenTool,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 interface EditorToolbarProps {
   editor: Editor | null;
   onToggleFindReplace: () => void;
+  onOpenExport?: () => void;
+  onOpenSignature?: () => void;
   className?: string;
 }
 
 export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   editor,
   onToggleFindReplace,
+  onOpenExport,
+  onOpenSignature,
   className = '',
 }) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -381,8 +387,30 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
       </div>
 
-      {/* Find & Replace Action */}
-      <div className="flex items-center pl-1">
+      {/* Find, Export & Signature Actions */}
+      <div className="flex items-center gap-1 pl-1.5 border-l border-stone-200 dark:border-stone-800">
+        {onOpenExport && (
+          <button
+            onClick={onOpenExport}
+            className="p-1.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-300 transition flex items-center gap-1 text-xs font-semibold"
+            title="Export Manuscript / Print PDF"
+          >
+            <Printer className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <span className="hidden sm:inline">Export</span>
+          </button>
+        )}
+
+        {onOpenSignature && (
+          <button
+            onClick={onOpenSignature}
+            className="p-1.5 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 transition flex items-center gap-1 text-xs"
+            title="Author Signature & Watermark Studio"
+          >
+            <PenTool className="w-4 h-4 text-stone-600 dark:text-stone-400" />
+            <span className="hidden xl:inline">Signature</span>
+          </button>
+        )}
+
         <button
           onClick={onToggleFindReplace}
           className="p-1.5 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 transition flex items-center gap-1 text-xs"

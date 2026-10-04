@@ -38,8 +38,18 @@ export const DEFAULT_SETTINGS: Settings = {
     model: 'standard',
     autoSuggest: false,
   },
+  signature: {
+    enabled: true,
+    type: 'typed',
+    typedName: 'Author Signature',
+    fontFamily: 'handwriting',
+    placement: 'bottom',
+    watermarkOpacity: 0.12,
+    watermarkText: 'LITERIA MANUSCRIPT DRAFT',
+  },
   updatedAt: Date.now(),
 };
+
 
 export async function initializeStorage(): Promise<void> {
   try {

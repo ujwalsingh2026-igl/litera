@@ -285,8 +285,12 @@ export function applyThemeToDOM(settings: AppearanceSettings): void {
     effectiveTheme = prefersDark ? 'dark' : 'light';
   }
 
+  const themeDef = BUILT_IN_THEMES[effectiveTheme] || BUILT_IN_THEMES.light;
+  root.classList.toggle('dark', themeDef.type === 'dark');
+
   // Set theme data-attributes
   root.setAttribute('data-theme', effectiveTheme);
+
   root.setAttribute('data-writing-mode', settings.writingMode || 'paper');
   root.setAttribute('data-density', settings.uiDensity || 'comfortable');
   root.setAttribute('data-font', settings.fontFamily || 'serif');
@@ -299,7 +303,6 @@ export function applyThemeToDOM(settings: AppearanceSettings): void {
   root.setAttribute('data-reduced-transparency', settings.reducedTransparency ? 'true' : 'false');
 
   // Dynamic CSS custom variables
-  const themeDef = BUILT_IN_THEMES[effectiveTheme] || BUILT_IN_THEMES.light;
   const colors = effectiveTheme === 'custom' && settings.customColors
     ? {
         ...themeDef.colors,

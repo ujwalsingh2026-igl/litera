@@ -63,10 +63,26 @@ export interface AISettings {
   autoSuggest: boolean;
 }
 
+export type SignatureType = 'typed' | 'drawn' | 'image';
+export type SignaturePlacement = 'bottom' | 'watermark' | 'both' | 'none';
+
+export interface SignatureSettings {
+  enabled: boolean;
+  type: SignatureType;
+  typedName: string;
+  fontFamily: 'handwriting' | 'serif' | 'classic';
+  drawnDataUrl?: string;
+  imageDataUrl?: string;
+  placement: SignaturePlacement;
+  watermarkOpacity: number; // e.g. 0.12 for 12%
+  watermarkText?: string;
+}
+
 export interface Settings {
   id: string; // 'current_settings'
   appearance: AppearanceSettings;
   editor: EditorSettings;
   ai: AISettings;
+  signature: SignatureSettings;
   updatedAt: number;
 }

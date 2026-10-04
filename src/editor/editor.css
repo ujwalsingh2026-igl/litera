@@ -3,16 +3,30 @@
 .tiptap {
   outline: none;
   min-height: 480px;
+  color: var(--color-text-primary, #1c1917);
+}
+
+.tiptap p,
+.tiptap span,
+.tiptap h1,
+.tiptap h2,
+.tiptap h3,
+.tiptap h4,
+.tiptap li,
+.tiptap td,
+.tiptap th {
+  color: var(--color-text-primary, #1c1917);
 }
 
 .tiptap p.is-editor-empty:first-child::before {
-  color: #a8a29e;
+  color: var(--color-text-muted, #a8a29e);
   content: attr(data-placeholder);
   float: left;
   height: 0;
   pointer-events: none;
   font-style: italic;
 }
+
 
 .tiptap h1 {
   font-family: var(--font-serif);
