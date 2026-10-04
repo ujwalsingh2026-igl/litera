@@ -63,12 +63,12 @@ export const MobileDrawer: React.FC = () => {
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-modal flex md:hidden bg-stone-900/50 backdrop-blur-xs animate-in fade-in duration-200"
+      className="fixed inset-0 z-[99999] flex bg-stone-950/80 backdrop-blur-md animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget) setMobileDrawerOpen(false);
       }}
     >
-      <div className="w-72 max-w-[85vw] h-full bg-white dark:bg-stone-900 border-r border-stone-200 dark:border-stone-800 shadow-modal flex flex-col animate-in slide-in-from-left duration-250 select-none">
+      <div className="relative z-[100000] w-72 max-w-[85vw] h-full bg-white dark:bg-stone-900 border-r border-stone-200 dark:border-stone-800 shadow-2xl flex flex-col animate-in slide-in-from-left duration-250 select-none opacity-100">
         {/* Drawer Header */}
         <div className="h-16 flex items-center justify-between px-5 border-b border-stone-200/80 dark:border-stone-800 shrink-0">
           <MobileBranding />

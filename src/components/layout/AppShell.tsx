@@ -29,9 +29,6 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       {/* Search Modal (Ctrl/Cmd + K) */}
       <SearchModal />
 
-      {/* Mobile Slide-Out Drawer */}
-      <MobileDrawer />
-
       {/* Desktop / Tablet Sidebar */}
       <Sidebar />
 
@@ -77,6 +74,9 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             <span>Exit Focus</span>
           </button>
         )}
+
+        {/* Mobile Slide-Out Navigation Drawer */}
+        <MobileDrawer />
       </div>
     </div>
   );
