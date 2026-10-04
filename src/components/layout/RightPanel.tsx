@@ -16,9 +16,19 @@ import {
 } from 'lucide-react';
 import { formatDate } from '../../utils/formatters';
 import { storyService } from '../../services/storyService';
+import { aiService } from '../../services/aiService';
+import { documentService } from '../../services/documentService';
 import type { Character, Location, Scene } from '../../types';
 import { CharacterModal } from '../story/CharacterModal';
 import { LocationModal } from '../story/LocationModal';
+import {
+  Send,
+  Copy,
+  Check,
+  PlusCircle,
+  Wand2,
+  RefreshCw,
+} from 'lucide-react';
 
 export const RightPanel: React.FC = () => {
   const {
@@ -43,6 +53,31 @@ export const RightPanel: React.FC = () => {
   const [locationModalOpen, setLocationModalOpen] = useState(false);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+
+  // Quick AI Assistant State
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiResponse, setAiResponse] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiCopied, setAiCopied] = useState(false);
+
+  const handleRunAiPrompt = async (promptText?: string) => {
+    const queryText = promptText || aiPrompt;
+    if (!queryText.trim() || aiLoading) return;
+    setAiLoading(true);
+    try {
+      const res = await aiService.queryGeminiOrLocal(queryText, activeDocument?.content || '');
+      setAiResponse(res);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleInsertAiIntoDoc = async () => {
+    if (!activeDocument || !aiResponse) return;
+    const cleanText = aiResponse.replace(/\*\*/g, '');
+    const updatedHtml = `${activeDocument.content || ''}<p>${cleanText.replace(/\n/g, '<br/>')}</p>`;
+    await documentService.update(activeDocument.id, { content: updatedHtml });
+  };
 
   const loadStoryData = async () => {
     const bookId = activeDocument?.bookId || null;
@@ -431,14 +466,97 @@ export const RightPanel: React.FC = () => {
           <div className="space-y-3">
             <h4 className="font-serif font-bold text-stone-900 dark:text-stone-100 text-sm flex items-center gap-1.5">
               <Sparkles className="w-4 h-4 text-amber-500" />
-              <span>Quick AI Assistant</span>
+              <span>Quick AI Companion</span>
             </h4>
             <p className="text-[11px] text-stone-500">
-              Ask for immediate phrasing suggestions or synonym lookups without leaving the page.
+              Get immediate phrasing suggestions, plot twists, or character beats while writing.
             </p>
-            <div className="p-3 rounded-lg bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/40 text-stone-700 dark:text-stone-300 text-xs">
-              "Select any text in your manuscript, and suggestions will appear in this sidebar."
+
+            {/* Quick Action Chips */}
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleRunAiPrompt('Expand the scene with sensory details')}
+                disabled={aiLoading}
+                className="p-2 rounded-lg border border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-800/60 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-[11px] font-medium text-stone-700 dark:text-stone-300 text-left transition flex items-center gap-1"
+              >
+                <Wand2 className="w-3.5 h-3.5 text-amber-500" />
+                <span>Expand Scene</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleRunAiPrompt('Polish the prose and enhance dialogue')}
+                disabled={aiLoading}
+                className="p-2 rounded-lg border border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-800/60 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-[11px] font-medium text-stone-700 dark:text-stone-300 text-left transition flex items-center gap-1"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Polish Dialogue</span>
+              </button>
             </div>
+
+            {/* AI Prompt Form */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleRunAiPrompt();
+              }}
+              className="flex gap-1.5 pt-1"
+            >
+              <input
+                type="text"
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder="Ask AI anything..."
+                className="flex-1 px-3 py-1.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg text-xs outline-none focus:border-amber-500"
+              />
+              <button
+                type="submit"
+                disabled={aiLoading || !aiPrompt.trim()}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold disabled:opacity-40 transition flex items-center"
+              >
+                {aiLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+              </button>
+            </form>
+
+            {/* AI Response Output Box */}
+            {aiLoading && (
+              <div className="p-3 rounded-lg bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-900/40 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-500 shrink-0" />
+                <span>Generating literary response...</span>
+              </div>
+            )}
+
+            {aiResponse && !aiLoading && (
+              <div className="p-3 rounded-xl bg-stone-50 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700/80 text-xs text-stone-800 dark:text-stone-200 space-y-2 font-serif leading-relaxed animate-in fade-in">
+                <div className="whitespace-pre-wrap max-h-44 overflow-y-auto">{aiResponse}</div>
+                <div className="flex items-center justify-between pt-2 border-t border-stone-200 dark:border-stone-700 text-[10px] font-sans">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(aiResponse);
+                      setAiCopied(true);
+                      setTimeout(() => setAiCopied(false), 2000);
+                    }}
+                    className="text-stone-500 hover:text-stone-900 dark:hover:text-stone-100 flex items-center gap-1"
+                  >
+                    {aiCopied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                    <span>{aiCopied ? 'Copied' : 'Copy'}</span>
+                  </button>
+
+                  {activeDocument && (
+                    <button
+                      type="button"
+                      onClick={handleInsertAiIntoDoc}
+                      className="text-amber-600 dark:text-amber-400 font-bold hover:underline flex items-center gap-1"
+                    >
+                      <PlusCircle className="w-3 h-3" />
+                      <span>Insert in Manuscript</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
