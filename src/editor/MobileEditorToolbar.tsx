@@ -29,7 +29,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({ editor
 
   return (
     <>
-      <div className="md:hidden flex items-center justify-between gap-1 px-2 py-1.5 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md border-t border-stone-200 dark:border-stone-800 z-20 overflow-x-auto no-scrollbar">
+      <div className="md:hidden fixed bottom-14 left-0 right-0 z-[90] flex items-center justify-between gap-1 px-3 py-1.5 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md border-t border-stone-200 dark:border-stone-800 shadow-md overflow-x-auto no-scrollbar">
         <div className="flex items-center gap-1">
           <button
             onClick={() => editor.chain().focus().toggleBold().run()}

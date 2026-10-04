@@ -61,12 +61,12 @@ export const SearchModal: React.FC = () => {
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-modal flex items-start justify-center pt-20 p-4 bg-stone-900/40 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-[9999] flex items-start justify-center pt-16 sm:pt-24 p-4 bg-stone-950/80 backdrop-blur-md animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) setSearchModalOpen(false);
       }}
     >
-      <div className="w-full max-w-xl bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-2xl shadow-modal overflow-hidden flex flex-col animate-in zoom-in-95 duration-150">
+      <div className="w-full max-w-xl bg-white dark:bg-stone-900 border border-stone-200/80 dark:border-stone-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col relative z-[10000] animate-in zoom-in-95 duration-150">
         {/* Search Input Bar */}
         <div className="flex items-center gap-3 px-4 py-3.5 border-b border-stone-100 dark:border-stone-800">
           <Search className="w-5 h-5 text-stone-400 shrink-0" />

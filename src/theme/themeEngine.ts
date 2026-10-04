@@ -286,7 +286,13 @@ export function applyThemeToDOM(settings: AppearanceSettings): void {
   }
 
   const themeDef = BUILT_IN_THEMES[effectiveTheme] || BUILT_IN_THEMES.light;
-  root.classList.toggle('dark', themeDef.type === 'dark');
+  const isDark = themeDef.type === 'dark' || effectiveTheme === 'dark' || effectiveTheme === 'midnight' || effectiveTheme === 'forest' || effectiveTheme === 'aurora';
+
+  if (isDark) {
+    root.classList.add('dark');
+  } else {
+    root.classList.remove('dark');
+  }
 
   // Set theme data-attributes
   root.setAttribute('data-theme', effectiveTheme);
@@ -326,6 +332,11 @@ export function applyThemeToDOM(settings: AppearanceSettings): void {
   root.style.setProperty('--color-border', colors.border);
   root.style.setProperty('--color-border-subtle', colors.borderSubtle);
   root.style.setProperty('--color-border-strong', colors.borderStrong);
+
+  if (document.body) {
+    document.body.style.backgroundColor = colors.bg;
+    document.body.style.color = colors.textPrimary;
+  }
 
   // Apply custom accent if specified
   const accentHex = settings.accentColor || colors.accent;

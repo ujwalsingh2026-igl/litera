@@ -24,6 +24,8 @@ import {
   Superscript as SuperscriptIcon,
   Printer,
   PenTool,
+  Palette,
+  LayoutTemplate,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 
@@ -32,6 +34,8 @@ interface EditorToolbarProps {
   onToggleFindReplace: () => void;
   onOpenExport?: () => void;
   onOpenSignature?: () => void;
+  onOpenDrawing?: () => void;
+  onOpenTemplate?: () => void;
   className?: string;
 }
 
@@ -40,6 +44,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   onToggleFindReplace,
   onOpenExport,
   onOpenSignature,
+  onOpenDrawing,
+  onOpenTemplate,
   className = '',
 }) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -387,7 +393,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
       </div>
 
-      {/* Find, Export & Signature Actions */}
+      {/* Find, Export, Signature, Drawing & Template Actions */}
       <div className="flex items-center gap-1 pl-1.5 border-l border-stone-200 dark:border-stone-800">
         {onOpenExport && (
           <button
@@ -397,6 +403,28 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
           >
             <Printer className="w-4 h-4 text-amber-600 dark:text-amber-400" />
             <span className="hidden sm:inline">Export</span>
+          </button>
+        )}
+
+        {onOpenDrawing && (
+          <button
+            onClick={onOpenDrawing}
+            className="p-1.5 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 transition flex items-center gap-1 text-xs"
+            title="Drawing & Illustration Studio"
+          >
+            <Palette className="w-4 h-4 text-rose-500" />
+            <span className="hidden xl:inline">Draw</span>
+          </button>
+        )}
+
+        {onOpenTemplate && (
+          <button
+            onClick={onOpenTemplate}
+            className="p-1.5 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 transition flex items-center gap-1 text-xs"
+            title="Template Studio & Outline Designer"
+          >
+            <LayoutTemplate className="w-4 h-4 text-blue-500" />
+            <span className="hidden xl:inline">Templates</span>
           </button>
         )}
 

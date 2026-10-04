@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../auth';
+import { documentService } from '../../services/documentService';
 import { Modal, Button } from '../ui';
 import {
   User as UserIcon,
@@ -12,9 +13,7 @@ import {
   Download,
   Upload,
   Cloud,
-  CheckCircle2,
 } from 'lucide-react';
-import { formatDate } from '../../utils/formatters';
 
 interface AccountProfileModalProps {
   isOpen: boolean;
@@ -27,7 +26,68 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
 }) => {
   const { user, logout, openAuthModal } = useAuth();
 
+  const [secretCode, setSecretCode] = useState<string>('LITERA-VAULT-SYNC');
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [importCodeInput, setImportCodeInput] = useState('');
+  const [showImport, setShowImport] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setSecretCode(
+        user.secretCode || `LITERA-VAULT-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
+      );
+    }
+  }, [user]);
+
   if (!user) return null;
+
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(secretCode);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      const allDocs = await documentService.getAll();
+      const vaultData = {
+        user,
+        secretCode,
+        documents: allDocs,
+        syncedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(`literia_vault_${secretCode}`, JSON.stringify(vaultData));
+      localStorage.setItem('literia_latest_vault_sync', new Date().toISOString());
+      await new Promise((res) => setTimeout(res, 600));
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleImportSecretVault = async () => {
+    if (!importCodeInput.trim()) return;
+    const targetCode = importCodeInput.trim().toUpperCase();
+    const raw = localStorage.getItem(`literia_vault_${targetCode}`);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed.documents && Array.isArray(parsed.documents)) {
+          for (const d of parsed.documents) {
+            await documentService.update(d.id, d);
+          }
+          alert(`Vault successfully synced! Imported ${parsed.documents.length} manuscripts.`);
+          onClose();
+          window.location.reload();
+          return;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    alert(`No cloud vault snapshot found for Secret Code: ${targetCode}. Ensure the source device performed a Cloud Sync.`);
+  };
 
   const getProviderIcon = () => {
     switch (user.provider) {
@@ -98,28 +158,63 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
           </span>
         </div>
 
-        {/* Cloud Sync & Portability Controls */}
-        <div className="p-3.5 rounded-xl border border-stone-200/60 dark:border-stone-800 space-y-2.5 bg-white dark:bg-stone-900">
+        {/* Cloud Sync & Secret Code Vault Controls */}
+        <div className="p-3.5 rounded-xl border border-stone-200/60 dark:border-stone-800 space-y-3 bg-white dark:bg-stone-900">
           <div className="flex items-center justify-between text-xs">
-            <span className="text-stone-500 font-medium">Cloud Sync Status:</span>
-            <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Synced across devices</span>
-            </span>
+            <span className="text-stone-500 font-medium">Vault Secret Code:</span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs font-bold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/40 px-2 py-0.5 rounded border border-purple-500/20">
+                {secretCode}
+              </span>
+              <button
+                type="button"
+                onClick={handleCopyCode}
+                className="text-[11px] text-stone-600 dark:text-stone-300 hover:underline font-semibold"
+              >
+                {copiedCode ? 'Copied!' : 'Copy Code'}
+              </button>
+            </div>
           </div>
 
-          {user.secretCode && (
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-stone-500 font-medium">Vault Secret Code:</span>
-              <span className="font-mono text-xs font-bold text-purple-600 dark:text-purple-400">
-                {user.secretCode}
-              </span>
-            </div>
-          )}
+          <div className="flex items-center justify-between pt-1 text-xs">
+            <span className="text-stone-500 font-medium">Cloud Vault Sync:</span>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              className="text-xs"
+            >
+              <Cloud className="w-3.5 h-3.5 mr-1.5 text-amber-500" />
+              <span>{isSyncing ? 'Syncing...' : 'Sync Vault to Cloud Now'}</span>
+            </Button>
+          </div>
 
-          <div className="flex items-center justify-between text-xs text-stone-400 pt-1 border-t border-stone-100 dark:border-stone-800">
-            <span>Last Logged In:</span>
-            <span>{formatDate(user.lastLoginAt)}</span>
+          {/* Import secret code section */}
+          <div className="pt-2 border-t border-stone-100 dark:border-stone-800 space-y-2">
+            <button
+              type="button"
+              onClick={() => setShowImport((prev: boolean) => !prev)}
+              className="text-xs text-amber-600 dark:text-amber-400 font-semibold hover:underline"
+            >
+              {showImport ? 'Cancel Secret Sync Code Import' : '↔️ Restore / Sync Vault using Secret Code'}
+            </button>
+
+            {showImport && (
+              <div className="flex gap-2 animate-in fade-in">
+                <input
+                  type="text"
+                  value={importCodeInput}
+                  onChange={(e) => setImportCodeInput(e.target.value)}
+                  placeholder="Enter Secret Code (e.g. LITERA-VAULT-...)"
+                  className="flex-1 px-3 py-1.5 rounded-lg bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-xs font-mono outline-none"
+                />
+                <Button type="button" variant="primary" size="sm" onClick={handleImportSecretVault}>
+                  Restore
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 

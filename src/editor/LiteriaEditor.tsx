@@ -13,6 +13,8 @@ import { calculateEnhancedStats, getDefaultMetadataForType } from './documentTem
 import { FocusModeHUD, type FocusDepth } from '../components/focus/FocusModeHUD';
 import { ExportManuscriptModal } from '../components/export/ExportManuscriptModal';
 import { AuthorSignatureModal } from '../components/signature/AuthorSignatureModal';
+import { DrawingStudioModal } from '../components/drawing/DrawingStudioModal';
+import { TemplateDesignerModal } from '../components/templates/TemplateDesignerModal';
 import type { Document, DocumentStats, DocumentType, DocumentTypeMetadata, Chapter } from '../types';
 import './editor.css';
 
@@ -41,6 +43,8 @@ export const LiteriaEditor: React.FC = () => {
   const [findReplaceOpen, setFindReplaceOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [drawingModalOpen, setDrawingModalOpen] = useState(false);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const [bookChapters, setBookChapters] = useState<Chapter[]>([]);
   const [focusDepth, setFocusDepth] = useState<FocusDepth>('off');
@@ -308,6 +312,8 @@ export const LiteriaEditor: React.FC = () => {
             onToggleFindReplace={() => setFindReplaceOpen((prev) => !prev)}
             onOpenExport={() => setExportModalOpen(true)}
             onOpenSignature={() => setSignatureModalOpen(true)}
+            onOpenDrawing={() => setDrawingModalOpen(true)}
+            onOpenTemplate={() => setTemplateModalOpen(true)}
           />
 
           {/* Type-Specific Specialized Toolbar */}
@@ -389,12 +395,12 @@ export const LiteriaEditor: React.FC = () => {
       {/* Writing Canvas */}
       <div
         data-focus-depth={focusDepth}
-        className={`flex-1 overflow-y-auto px-4 sm:px-8 md:px-12 py-8 flex justify-center custom-scrollbar ${
+        className={`flex-1 overflow-y-auto px-3 sm:px-8 md:px-12 py-4 sm:py-8 flex justify-center custom-scrollbar ${
           typewriterMode ? 'typewriter-canvas' : ''
         }`}
       >
         <main
-          className={`w-full ${currentWidthClass} flex flex-col min-h-[calc(100vh-16rem)] writing-sheet transition-all duration-200`}
+          className={`w-full ${currentWidthClass} flex flex-col min-h-[calc(100vh-10rem)] h-auto writing-sheet overflow-visible transition-all duration-200`}
           style={{
             fontSize: `${settings.appearance.largerText ? settings.appearance.fontSize + 2 : settings.appearance.fontSize}px`,
             lineHeight: settings.appearance.increasedLineHeight ? settings.appearance.lineHeight + 0.2 : settings.appearance.lineHeight,
@@ -477,7 +483,7 @@ export const LiteriaEditor: React.FC = () => {
         hasUnsaved={hasUnsaved}
       />
 
-      {/* Export & Signature Modals */}
+      {/* Export, Signature, Drawing & Template Modals */}
       <ExportManuscriptModal
         isOpen={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
@@ -487,6 +493,16 @@ export const LiteriaEditor: React.FC = () => {
       <AuthorSignatureModal
         isOpen={signatureModalOpen}
         onClose={() => setSignatureModalOpen(false)}
+      />
+
+      <DrawingStudioModal
+        isOpen={drawingModalOpen}
+        onClose={() => setDrawingModalOpen(false)}
+      />
+
+      <TemplateDesignerModal
+        isOpen={templateModalOpen}
+        onClose={() => setTemplateModalOpen(false)}
       />
     </div>
   );

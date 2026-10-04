@@ -16,7 +16,7 @@ export const MobileNav: React.FC = () => {
   if (distractionFree) return null;
 
   return (
-    <nav className="md:hidden border-t border-stone-200/80 dark:border-stone-800 bg-white/95 dark:bg-stone-900/95 backdrop-blur-lg px-2 py-1 flex items-center justify-around shrink-0 z-30 select-none pb-safe">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 h-14 border-t border-stone-200/80 dark:border-stone-800 bg-white/95 dark:bg-stone-900/95 backdrop-blur-xl px-2 py-1 flex items-center justify-around z-[100] select-none pb-safe shadow-lg">
       <button
         onClick={() => setCurrentView('home')}
         className={cn(

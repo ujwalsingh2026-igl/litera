@@ -13,7 +13,7 @@ interface AppShellProps {
 }
 
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
-  const { isStorageReady, distractionFree, toggleDistractionFree } = useApp();
+  const { isStorageReady, distractionFree, toggleDistractionFree, currentView } = useApp();
 
   if (!isStorageReady) {
     return (
@@ -40,9 +40,21 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         <Header />
 
         {/* Workspace + Right Panel Container */}
-        <div className="flex-1 flex min-h-0 overflow-hidden relative">
-          <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-            <div className={`mx-auto h-full ${distractionFree ? 'max-w-3xl' : 'max-w-6xl'}`}>
+        <div className="flex-1 flex min-h-0 overflow-hidden relative pb-14 md:pb-0">
+          <main
+            className={`flex-1 ${
+              currentView === 'document' ? 'overflow-hidden p-0' : 'overflow-y-auto p-3 sm:p-6 lg:p-8'
+            }`}
+          >
+            <div
+              className={`mx-auto h-full ${
+                currentView === 'document'
+                  ? 'max-w-none w-full'
+                  : distractionFree
+                  ? 'max-w-3xl'
+                  : 'max-w-6xl'
+              }`}
+            >
               {children}
             </div>
           </main>
