@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
   Send,
@@ -16,6 +16,7 @@ import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { useApp } from '../state';
 import { documentService } from '../services/documentService';
+import { aiService } from '../services/aiService';
 
 interface Message {
   id: string;
@@ -27,10 +28,19 @@ interface Message {
 export const AIPlaceholder: React.FC = () => {
   const { activeDocument, openDocument } = useApp();
   const [prompt, setPrompt] = useState('');
-  const [apiKey, setApiKey] = useState('');
+  const [apiKey, setApiKey] = useState(aiService.getStoredApiKey());
   const [showKeyInput, setShowKeyInput] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setApiKey(aiService.getStoredApiKey());
+  }, []);
+
+  const handleSaveApiKey = (keyVal: string) => {
+    setApiKey(keyVal);
+    aiService.setStoredApiKey(keyVal);
+  };
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -41,60 +51,8 @@ export const AIPlaceholder: React.FC = () => {
     },
   ]);
 
-  // Intelligent Literary AI Response Generator (Local AI Engine + API Fallback)
   const generateAIResponse = async (userPrompt: string): Promise<string> => {
-    const lower = userPrompt.toLowerCase();
-
-    // If custom API Key is provided, perform live fetch to Gemini API
-    if (apiKey.trim()) {
-      try {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [
-                {
-                  parts: [
-                    {
-                      text: `You are an expert literary assistant and novelist editor. Help the author with their request: "${userPrompt}". Document Context: Title: "${activeDocument?.title || 'Untitled'}"`,
-                    },
-                  ],
-                },
-              ],
-            }),
-          }
-        );
-        const data = await response.json();
-        if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-          return data.candidates[0].content.parts[0].text;
-        }
-      } catch {
-        // Fall back to local literary engine
-      }
-    }
-
-    // Local Literary Smart Engine Responses
-    await new Promise((resolve) => setTimeout(resolve, 800));
-
-    if (lower.includes('character') || lower.includes('profile')) {
-      return `🎭 **Character Profile Blueprint**\n\n**Name:** Julian Vance\n**Role:** Protagonist / Enigmatic Antiquarian\n**Core Desire:** Uncover the forbidden manuscript before the shadow guild intercedes.\n**Internal Conflict:** Torn between loyalty to his mentor and fear of the truth.\n**Signature Trait:** Adjusts a vintage brass timepiece when calculating his next move.\n\n*Suggestion:* Introduce Julian in a dimly lit library surrounded by ancient cartography maps to anchor the scene visually.`;
-    }
-
-    if (lower.includes('twist') || lower.includes('plot')) {
-      return `⚡ **Plot Twist Ideas for "${activeDocument?.title || 'Your Story'}"**\n\n1. **The Secret Benefactor:** The antagonist was secretly financing the protagonist's expedition to protect them from a far greater threat.\n2. **Unreliable Artifact:** The compass doesn't point north—it points toward the person holding the biggest secret in the room.\n3. **False Identity:** The mentor Julian trusted has actually been deceased for three years; the person giving orders is an imposter.`;
-    }
-
-    if (lower.includes('dialogue') || lower.includes('enhance') || lower.includes('polish')) {
-      return `💬 **Polished Literary Dialogue Sample**\n\n"You speak as though time is on our side," Julian murmured, tracing the gold rim of his cup. "It isn't. The clock stopped the moment we opened that doorway."\n\n*Key Enhancement:* Replaced generic speech tags with evocative physical beats to deepen atmospheric tension.`;
-    }
-
-    if (lower.includes('expand') || lower.includes('scene') || lower.includes('write')) {
-      return `📖 **Scene Expansion**\n\nThe rain beat a relentless rhythm against the tall stained-glass windows, casting amber and indigo shadows across the obsidian floor. Julian stepped forward, his boots crunching against broken marble. Every breath tasted of ozone and ancient paper.\n\nHe hesitated at the threshold, reaching for the silver key hidden beneath his coat...`;
-    }
-
-    return `✨ **Literary Feedback & Insight**\n\nRegarding "${userPrompt}":\n\nTo heighten narrative engagement in this section:\n- **Pacing:** Alternate between reflective sensory details and sharp, immediate verbs.\n- **Sensory Grounding:** Focus on atmospheric textures (the scent of old leather, cold brass, flickering candlelight).\n- **Emotional Anchor:** Reveal the protagonist's underlying motivation through subtle body language.`;
+    return await aiService.queryGeminiOrLocal(userPrompt, activeDocument?.content || '', apiKey);
   };
 
   const handleSend = async (textToSend?: string) => {
@@ -182,7 +140,7 @@ export const AIPlaceholder: React.FC = () => {
             <input
               type="password"
               value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              onChange={(e) => handleSaveApiKey(e.target.value)}
               placeholder="AIzaSy... or sk-..."
               className="flex-1 px-3 py-1.5 bg-stone-900 border border-stone-700 rounded-lg text-xs text-stone-100 outline-none"
             />
