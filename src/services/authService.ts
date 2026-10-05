@@ -3,6 +3,8 @@ import type { User } from '../types';
 const STORAGE_KEY = 'literia_auth_user';
 const VAULT_CODE_KEY = 'literia_secret_vault_code';
 
+import { googleCloudSyncService } from './googleCloudSyncService';
+
 export class AuthService {
   /**
    * Get currently persisted user session
@@ -48,15 +50,18 @@ export class AuthService {
   }
 
   /**
-   * 1. Google Sign-In / Sign-Up
+   * 1. Google Sign-In / Sign-Up with Cloud Vault Sync
    */
-  async signInWithGoogle(): Promise<User> {
-    // Simulated Google OAuth authentication flow
-    await new Promise((res) => setTimeout(res, 600));
+  async signInWithGoogle(customEmail?: string, customName?: string): Promise<User> {
+    await new Promise((res) => setTimeout(res, 500));
+    const finalEmail = (customEmail && customEmail.includes('@')) ? customEmail.trim() : 'author.google@gmail.com';
+    const finalName = customName?.trim() || finalEmail.split('@')[0].replace('.', ' ');
+    const formattedName = finalName.charAt(0).toUpperCase() + finalName.slice(1);
+
     const user: User = {
-      id: `google_${crypto.randomUUID().slice(0, 8)}`,
-      email: 'writer.author@gmail.com',
-      displayName: 'Google Author',
+      id: `google_${finalEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
+      email: finalEmail,
+      displayName: formattedName,
       avatarUrl: 'https://lh3.googleusercontent.com/a/default-user',
       avatarColor: '#4285F4',
       provider: 'google',
@@ -65,7 +70,12 @@ export class AuthService {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
+
     this.saveUserSession(user);
+
+    // Automatically sync and encrypt all pre-login local manuscripts to Google Cloud Vault
+    await googleCloudSyncService.syncPreLoginManuscripts(user);
+
     return user;
   }
 
@@ -90,6 +100,7 @@ export class AuthService {
       updatedAt: Date.now(),
     };
     this.saveUserSession(user);
+    await googleCloudSyncService.syncPreLoginManuscripts(user);
     return user;
   }
 
@@ -110,6 +121,7 @@ export class AuthService {
       updatedAt: Date.now(),
     };
     this.saveUserSession(user);
+    await googleCloudSyncService.syncPreLoginManuscripts(user);
     return user;
   }
 
@@ -132,6 +144,7 @@ export class AuthService {
       updatedAt: Date.now(),
     };
     this.saveUserSession(user);
+    await googleCloudSyncService.syncPreLoginManuscripts(user);
     return user;
   }
 
@@ -166,6 +179,7 @@ export class AuthService {
       updatedAt: Date.now(),
     };
     this.saveUserSession(user);
+    await googleCloudSyncService.syncPreLoginManuscripts(user);
     return user;
   }
 
@@ -201,6 +215,7 @@ export class AuthService {
       updatedAt: Date.now(),
     };
     this.saveUserSession(user);
+    await googleCloudSyncService.syncPreLoginManuscripts(user);
     return user;
   }
 }

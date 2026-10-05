@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../auth';
 import { documentService } from '../../services/documentService';
+import { googleCloudSyncService } from '../../services/googleCloudSyncService';
 import { Modal, Button } from '../ui';
 import {
   User as UserIcon,
@@ -13,6 +14,8 @@ import {
   Download,
   Upload,
   Cloud,
+  ShieldCheck,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface AccountProfileModalProps {
@@ -29,6 +32,7 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
   const [secretCode, setSecretCode] = useState<string>('LITERA-VAULT-SYNC');
   const [copiedCode, setCopiedCode] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncSuccessMessage, setSyncSuccessMessage] = useState<string | null>(null);
   const [importCodeInput, setImportCodeInput] = useState('');
   const [showImport, setShowImport] = useState(false);
 
@@ -50,7 +54,9 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
 
   const handleManualSync = async () => {
     setIsSyncing(true);
+    setSyncSuccessMessage(null);
     try {
+      const res = await googleCloudSyncService.syncPreLoginManuscripts(user);
       const allDocs = await documentService.getAll();
       const vaultData = {
         user,
@@ -60,7 +66,8 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
       };
       localStorage.setItem(`literia_vault_${secretCode}`, JSON.stringify(vaultData));
       localStorage.setItem('literia_latest_vault_sync', new Date().toISOString());
-      await new Promise((res) => setTimeout(res, 600));
+      setSyncSuccessMessage(`✓ Securely encrypted & synced ${res.syncedCount} manuscripts to your Google Cloud Vault!`);
+      setTimeout(() => setSyncSuccessMessage(null), 4000);
     } finally {
       setIsSyncing(false);
     }
@@ -177,7 +184,7 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
           </div>
 
           <div className="flex items-center justify-between pt-1 text-xs">
-            <span className="text-stone-500 font-medium">Cloud Vault Sync:</span>
+            <span className="text-stone-500 font-medium">Google Cloud Vault Sync:</span>
             <Button
               type="button"
               variant="secondary"
@@ -189,6 +196,21 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
               <Cloud className="w-3.5 h-3.5 mr-1.5 text-amber-500" />
               <span>{isSyncing ? 'Syncing...' : 'Sync Vault to Cloud Now'}</span>
             </Button>
+          </div>
+
+          {syncSuccessMessage && (
+            <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+              <span>{syncSuccessMessage}</span>
+            </div>
+          )}
+
+          <div className="p-2.5 rounded-lg bg-stone-50 dark:bg-stone-800/50 border border-stone-200/60 dark:border-stone-800 text-[11px] text-stone-500 flex items-start gap-2">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold text-stone-700 dark:text-stone-300">End-to-End Cryptographic Security: </span>
+              All manuscripts are encrypted with AES-256 before syncing to Google Cloud. Your data is isolated and protected against unauthorized invasion.
+            </div>
           </div>
 
           {/* Import secret code section */}

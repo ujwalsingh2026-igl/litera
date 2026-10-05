@@ -15,6 +15,9 @@ import { ExportManuscriptModal } from '../components/export/ExportManuscriptModa
 import { AuthorSignatureModal } from '../components/signature/AuthorSignatureModal';
 import { DrawingStudioModal } from '../components/drawing/DrawingStudioModal';
 import { TemplateDesignerModal } from '../components/templates/TemplateDesignerModal';
+import { GlobalAiModal } from '../components/ai/GlobalAiModal';
+import { useAuth } from '../auth';
+import { googleCloudSyncService } from '../services/googleCloudSyncService';
 import type { Document, DocumentStats, DocumentType, DocumentTypeMetadata, Chapter } from '../types';
 import './editor.css';
 
@@ -34,6 +37,8 @@ const DOC_TYPE_LABELS: Record<DocumentType, { label: string; icon: string }> = {
 export const LiteriaEditor: React.FC = () => {
   const { activeDocument, setActiveDocument, distractionFree, setDistractionFree, settings } = useApp();
   const [doc, setDoc] = useState<Document | null>(activeDocument);
+  const { user } = useAuth();
+  const [aiModalOpen, setAiModalOpen] = useState(false);
   const [title, setTitle] = useState<string>(activeDocument?.title || 'Untitled');
   const [stats, setStats] = useState<DocumentStats>(
     activeDocument?.stats || calculateEnhancedStats('blank', '', '')
@@ -100,8 +105,37 @@ export const LiteriaEditor: React.FC = () => {
       attributes: {
         class:
           'focus:outline-none min-h-[500px] max-w-none font-serif text-[var(--color-text-primary)] text-lg leading-relaxed selection:bg-amber-100 dark:selection:bg-amber-900/40',
+        spellcheck: settings.editor.spellCheck ? 'true' : 'false',
+        autocorrect: 'on',
+        autocapitalize: 'sentences',
+        autocomplete: 'on',
       },
-
+      handleDOMEvents: {
+        // Prevent virtual keyboard from disappearing when user interacts with spelling correction tabs/bubbles
+        beforeinput: (view, event: Event) => {
+          const inputEvent = event as InputEvent;
+          if (
+            inputEvent.inputType === 'insertReplacementText' ||
+            inputEvent.inputType === 'insertFromSpellChecker' ||
+            inputEvent.inputType === 'insertText'
+          ) {
+            if (!view.hasFocus()) {
+              view.focus();
+            }
+          }
+          return false;
+        },
+        touchend: (view, event: TouchEvent) => {
+          if (event.target instanceof HTMLElement && event.target.closest('.tiptap')) {
+            requestAnimationFrame(() => {
+              if (!view.hasFocus()) {
+                view.focus();
+              }
+            });
+          }
+          return false;
+        },
+      },
     },
     onUpdate: ({ editor: currentEditor }) => {
       setHasUnsaved(true);
@@ -135,7 +169,7 @@ export const LiteriaEditor: React.FC = () => {
         }
       }
 
-      // Debounced save to IndexedDB
+      // Debounced save to IndexedDB & Google Cloud Vault
       if (saveTimeoutRef.current) {
         window.clearTimeout(saveTimeoutRef.current);
       }
@@ -149,6 +183,11 @@ export const LiteriaEditor: React.FC = () => {
             plainTextPreview: text.slice(0, 160),
           });
           setHasUnsaved(false);
+
+          // Continuous sync to Google Cloud Vault when authenticated
+          if (user && user.provider !== 'guest') {
+            googleCloudSyncService.syncNow(user).catch(() => {});
+          }
         } catch (err) {
           console.error('Failed to save document:', err);
         } finally {
@@ -314,6 +353,7 @@ export const LiteriaEditor: React.FC = () => {
             onOpenSignature={() => setSignatureModalOpen(true)}
             onOpenDrawing={() => setDrawingModalOpen(true)}
             onOpenTemplate={() => setTemplateModalOpen(true)}
+            onOpenAi={() => setAiModalOpen(true)}
           />
 
           {/* Type-Specific Specialized Toolbar */}
@@ -474,7 +514,7 @@ export const LiteriaEditor: React.FC = () => {
       </div>
 
       {/* Mobile Toolbar (Visible on touch/small viewports) */}
-      <MobileEditorToolbar editor={editor} />
+      <MobileEditorToolbar editor={editor} onOpenAi={() => setAiModalOpen(true)} />
 
       {/* Status Bar */}
       <EditorStatusBar
@@ -483,7 +523,7 @@ export const LiteriaEditor: React.FC = () => {
         hasUnsaved={hasUnsaved}
       />
 
-      {/* Export, Signature, Drawing & Template Modals */}
+      {/* Export, Signature, Drawing, Template & AI Modals */}
       <ExportManuscriptModal
         isOpen={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
@@ -503,6 +543,11 @@ export const LiteriaEditor: React.FC = () => {
       <TemplateDesignerModal
         isOpen={templateModalOpen}
         onClose={() => setTemplateModalOpen(false)}
+      />
+
+      <GlobalAiModal
+        isOpen={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
       />
     </div>
   );

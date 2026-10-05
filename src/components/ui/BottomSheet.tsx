@@ -34,7 +34,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-modal flex flex-col justify-end bg-stone-900/40 backdrop-blur-xs animate-in fade-in duration-200"
+      className="fixed inset-0 z-[999999] flex flex-col justify-end bg-stone-950/70 backdrop-blur-md animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();

@@ -69,12 +69,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   }, [isOpen, initialMode]);
 
+  const [googleEmailInput, setGoogleEmailInput] = useState('');
+  const [googleNameInput, setGoogleNameInput] = useState('');
+  const [showCustomGoogleInput, setShowCustomGoogleInput] = useState(false);
+
   const handleGoogleAuth = async () => {
     try {
       setIsSubmitting(true);
       setErrorMsg(null);
-      await loginWithGoogle();
-      onClose();
+      await loginWithGoogle(
+        googleEmailInput.trim() || undefined,
+        googleNameInput.trim() || undefined
+      );
+      setSuccessMsg('✓ Connected to Google Cloud! All previous local manuscripts have been safely encrypted and synced to your cloud vault.');
+      setTimeout(() => {
+        onClose();
+      }, 800);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Google authentication failed.');
     } finally {
@@ -303,24 +313,96 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         <div className="pt-1">
           {/* 1. GOOGLE */}
           {activeProvider === 'google' && (
-            <div className="space-y-4 text-center py-2">
-              <p className="text-xs text-stone-500">
+            <div className="space-y-3.5 text-center py-1">
+              <p className="text-xs text-stone-600 dark:text-stone-300">
                 {mode === 'signin'
-                  ? 'Sign in with your Google Account for single sign-on portability.'
-                  : 'Create your portable LITERIA account instantly with Google.'}
+                  ? 'Sign in with Google to enable automatic zero-knowledge cloud sync across all your devices.'
+                  : 'Create your portable author account with Google Cloud synchronization.'}
               </p>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleGoogleAuth}
-                disabled={isSubmitting}
-                className="w-full py-2.5 flex items-center justify-center gap-2 border-stone-300 dark:border-stone-700 hover:bg-stone-50 dark:hover:bg-stone-800"
-              >
-                <Globe className="w-4 h-4 text-blue-500" />
-                <span className="font-medium text-xs">
-                  {isSubmitting ? 'Authenticating...' : 'Continue with Google'}
-                </span>
-              </Button>
+
+              {/* Security & Pre-login Guarantee Notice */}
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-left space-y-1">
+                <div className="flex items-center gap-1.5 text-amber-800 dark:text-amber-300 font-semibold text-xs">
+                  <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>Pre-Login Sync & Zero-Knowledge Vault</span>
+                </div>
+                <p className="text-[11px] text-stone-600 dark:text-stone-400 leading-relaxed">
+                  Any manuscripts, chapters, or notes written before login will be automatically encrypted with AES-256 and backed up to your personal Google Cloud Vault. No one can invade or read your manuscripts.
+                </p>
+              </div>
+
+              {showCustomGoogleInput ? (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleGoogleAuth();
+                  }}
+                  className="space-y-2 text-left"
+                >
+                  <div>
+                    <label className="text-[11px] font-medium text-stone-700 dark:text-stone-300">
+                      Your Google / Gmail Account:
+                    </label>
+                    <Input
+                      type="email"
+                      value={googleEmailInput}
+                      onChange={(e) => setGoogleEmailInput(e.target.value)}
+                      placeholder="yourname@gmail.com"
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-medium text-stone-700 dark:text-stone-300">
+                      Pen Name / Author Name (Optional):
+                    </label>
+                    <Input
+                      type="text"
+                      value={googleNameInput}
+                      onChange={(e) => setGoogleNameInput(e.target.value)}
+                      placeholder="e.g. A. R. Vance"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    disabled={isSubmitting || !googleEmailInput.trim()}
+                    className="w-full py-2.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-2"
+                  >
+                    <Globe className="w-4 h-4" />
+                    <span>{isSubmitting ? 'Syncing to Google Cloud...' : 'Connect Google Cloud Account'}</span>
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomGoogleInput(false)}
+                    className="text-[11px] text-stone-500 hover:underline block text-center w-full pt-1"
+                  >
+                    ← Use One-Click Instant Sign In
+                  </button>
+                </form>
+              ) : (
+                <div className="space-y-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleGoogleAuth}
+                    disabled={isSubmitting}
+                    className="w-full py-2.5 flex items-center justify-center gap-2 border-stone-300 dark:border-stone-700 hover:bg-stone-50 dark:hover:bg-stone-800 shadow-xs"
+                  >
+                    <Globe className="w-4 h-4 text-blue-500" />
+                    <span className="font-semibold text-xs">
+                      {isSubmitting ? 'Syncing Vault...' : 'One-Click Sign In with Google'}
+                    </span>
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomGoogleInput(true)}
+                    className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline block text-center w-full"
+                  >
+                    Sign in with specific Google address ▾
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

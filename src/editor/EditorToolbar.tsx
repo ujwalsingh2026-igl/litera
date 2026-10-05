@@ -26,6 +26,7 @@ import {
   PenTool,
   Palette,
   LayoutTemplate,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 
@@ -36,6 +37,7 @@ interface EditorToolbarProps {
   onOpenSignature?: () => void;
   onOpenDrawing?: () => void;
   onOpenTemplate?: () => void;
+  onOpenAi?: () => void;
   className?: string;
 }
 
@@ -48,6 +50,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   onOpenSignature,
   onOpenDrawing,
   onOpenTemplate,
+  onOpenAi,
   className = '',
 }) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -438,6 +441,17 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
           >
             <PenTool className="w-4 h-4 text-stone-600 dark:text-stone-400" />
             <span className="hidden xl:inline">Signature</span>
+          </button>
+        )}
+
+        {onOpenAi && (
+          <button
+            onClick={onOpenAi}
+            className="p-1.5 rounded-md bg-purple-500/10 hover:bg-purple-500/20 text-purple-900 dark:text-purple-300 transition flex items-center gap-1 text-xs font-semibold"
+            title="Literia AI Companion & Writing Assistant"
+          >
+            <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            <span className="hidden sm:inline">AI</span>
           </button>
         )}
 

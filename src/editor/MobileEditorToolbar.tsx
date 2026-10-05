@@ -15,18 +15,20 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
+  Sparkles,
 } from 'lucide-react';
 import { BottomSheet } from '../components/ui';
 
 interface MobileEditorToolbarProps {
   editor: Editor | null;
+  onOpenAi?: () => void;
 }
 
 const safeChain = (editor: Editor) => {
   return editor.isFocused ? editor.chain().focus() : editor.chain();
 };
 
-export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({ editor }) => {
+export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({ editor, onOpenAi }) => {
   const [sheetOpen, setSheetOpen] = useState(false);
 
   if (!editor) return null;
@@ -79,13 +81,25 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({ editor
           </button>
         </div>
 
-        <button
-          onClick={() => setSheetOpen(true)}
-          className="p-2 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 ml-1 shrink-0"
-          aria-label="More formatting options"
-        >
-          <SlidersHorizontal className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0 ml-1">
+          {onOpenAi && (
+            <button
+              onClick={onOpenAi}
+              className="p-2 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 hover:bg-purple-500/20 transition"
+              aria-label="AI Assistant"
+              title="Literia AI Companion"
+            >
+              <Sparkles className="w-4 h-4" />
+            </button>
+          )}
+          <button
+            onClick={() => setSheetOpen(true)}
+            className="p-2 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300"
+            aria-label="More formatting options"
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Formatting Bottom Sheet */}
@@ -95,6 +109,22 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({ editor
         title="Formatting & Inserts"
       >
         <div className="space-y-4 pb-6 text-xs">
+          {onOpenAi && (
+            <div>
+              <div className="font-semibold text-stone-400 uppercase text-[10px] mb-2">AI Assistant</div>
+              <button
+                onClick={() => {
+                  setSheetOpen(false);
+                  onOpenAi();
+                }}
+                className="w-full p-2.5 rounded-lg border border-purple-300 dark:border-purple-800 bg-purple-500/10 text-purple-700 dark:text-purple-300 flex items-center justify-center gap-2 font-medium hover:bg-purple-500/20 transition"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Open Literia AI Companion</span>
+              </button>
+            </div>
+          )}
+
           <div>
             <div className="font-semibold text-stone-400 uppercase text-[10px] mb-2">Headings</div>
             <div className="grid grid-cols-3 gap-2">

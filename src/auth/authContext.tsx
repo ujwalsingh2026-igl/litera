@@ -13,7 +13,7 @@ interface AuthContextType {
   openAuthModal: (defaultMode?: 'signin' | 'signup', defaultProvider?: AuthProviderType) => void;
   
   // Auth actions
-  loginWithGoogle: () => Promise<User>;
+  loginWithGoogle: (email?: string, name?: string) => Promise<User>;
   loginWithGmail: (email: string, password?: string) => Promise<User>;
   loginWithApple: () => Promise<User>;
   loginWithLiteraId: (handle: string, displayName?: string) => Promise<User>;
@@ -42,8 +42,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setAuthModalOpen(true);
   };
 
-  const loginWithGoogle = async (): Promise<User> => {
-    const newUser = await authService.signInWithGoogle();
+  const loginWithGoogle = async (email?: string, name?: string): Promise<User> => {
+    const newUser = await authService.signInWithGoogle(email, name);
     setUser(newUser);
     return newUser;
   };
