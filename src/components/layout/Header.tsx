@@ -96,7 +96,7 @@ export const Header: React.FC = () => {
   const showBackButton = navigationHistory.length > 1;
 
   return (
-    <header className="h-16 border-b border-stone-200/80 dark:border-stone-800 bg-white/70 dark:bg-stone-900/70 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between shrink-0 select-none z-10 transition-colors">
+    <header className="min-h-16 h-[calc(4rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] border-b border-stone-200/80 dark:border-stone-800 bg-white/70 dark:bg-stone-900/70 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between shrink-0 select-none z-10 transition-colors">
       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
         {/* Mobile menu drawer trigger */}
         <button

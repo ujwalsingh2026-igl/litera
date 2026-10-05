@@ -85,7 +85,7 @@ export const Sidebar: React.FC = () => {
   return (
     <aside
       style={{ width: sidebarOpen ? `${sidebarWidth}px` : '72px' }}
-      className="hidden md:flex flex-col border-r border-stone-200/80 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/70 backdrop-blur-md relative shrink-0 z-20 select-none transition-[width] duration-150"
+      className="hidden md:flex flex-col border-r border-stone-200/80 dark:border-stone-800 bg-stone-50/70 dark:bg-stone-900/70 backdrop-blur-md relative shrink-0 z-20 select-none transition-[width] duration-150 pt-[env(safe-area-inset-top,0px)]"
     >
       {/* Resizing handle on desktop */}
       {sidebarOpen && (

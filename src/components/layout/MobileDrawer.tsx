@@ -70,7 +70,7 @@ export const MobileDrawer: React.FC = () => {
     >
       <div className="relative z-[100000] w-72 max-w-[85vw] h-full bg-white dark:bg-stone-900 border-r border-stone-200 dark:border-stone-800 shadow-2xl flex flex-col animate-in slide-in-from-left duration-250 select-none opacity-100">
         {/* Drawer Header */}
-        <div className="h-16 flex items-center justify-between px-5 border-b border-stone-200/80 dark:border-stone-800 shrink-0">
+        <div className="min-h-16 h-[calc(4rem+env(safe-area-inset-top,0px))] pt-[env(safe-area-inset-top,0px)] flex items-center justify-between px-5 border-b border-stone-200/80 dark:border-stone-800 shrink-0">
           <MobileBranding />
           <button
             onClick={() => setMobileDrawerOpen(false)}

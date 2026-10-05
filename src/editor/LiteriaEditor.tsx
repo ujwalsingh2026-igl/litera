@@ -343,7 +343,9 @@ export const LiteriaEditor: React.FC = () => {
 
   return (
     <div
-      className={`flex flex-col h-full bg-[var(--color-bg)] text-[var(--color-text-primary)] relative overflow-hidden transition-colors duration-200 ${currentFontClass}`}
+      className={`flex flex-col h-full bg-[var(--color-bg)] text-[var(--color-text-primary)] relative overflow-hidden transition-colors duration-200 ${currentFontClass} ${
+        distractionFree ? 'pt-[env(safe-area-inset-top,0px)]' : ''
+      }`}
     >
       {/* Desktop Toolbar (Hidden in Distraction-Free mode) */}
       {!distractionFree && (
