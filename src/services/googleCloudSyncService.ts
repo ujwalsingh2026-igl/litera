@@ -20,11 +20,98 @@ export interface GoogleSyncStatus {
   isSyncing: boolean;
   securityProtocol: string;
   vaultId: string | null;
+  isOnline: boolean;
+  pendingOfflineCount: number;
 }
 
 class GoogleCloudSyncService {
   private syncTimer: number | null = null;
+  private debounceTimer: number | null = null;
   private isSyncing = false;
+  private isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+  private currentUser: User | null = null;
+  private pendingOfflineDocIds: Set<string> = new Set();
+  private statusListeners: Set<(status: GoogleSyncStatus) => void> = new Set();
+
+  constructor() {
+    // Restore pending offline sync queue from localStorage
+    try {
+      const savedPending = localStorage.getItem('literia_pending_offline_sync');
+      if (savedPending) {
+        const arr = JSON.parse(savedPending);
+        if (Array.isArray(arr)) {
+          this.pendingOfflineDocIds = new Set(arr);
+        }
+      }
+    } catch {
+      // ignore parsing error
+    }
+
+    // Set up network listeners
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => {
+        console.log('[Literia Sync] Network restored! Triggering immediate sync...');
+        this.isOnline = true;
+        this.handleNetworkRestored();
+      });
+
+      window.addEventListener('offline', () => {
+        console.log('[Literia Sync] Offline mode activated. Work is secured locally.');
+        this.isOnline = false;
+        this.notifyListeners();
+        window.dispatchEvent(
+          new CustomEvent('literia:network-status', { detail: { online: false } })
+        );
+      });
+
+      if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible' && navigator.onLine && !this.isOnline) {
+            this.isOnline = true;
+            this.handleNetworkRestored();
+          }
+        });
+      }
+    }
+  }
+
+  private savePendingOfflineQueue(): void {
+    try {
+      localStorage.setItem(
+        'literia_pending_offline_sync',
+        JSON.stringify(Array.from(this.pendingOfflineDocIds))
+      );
+    } catch (e) {
+      console.warn('Failed to persist pending offline queue:', e);
+    }
+  }
+
+  private notifyListeners(): void {
+    const status = this.getSyncStatus(this.currentUser);
+    this.statusListeners.forEach((cb) => {
+      try {
+        cb(status);
+      } catch (e) {
+        console.error('Sync status listener error:', e);
+      }
+    });
+  }
+
+  /**
+   * Subscribe to live sync and connectivity changes
+   */
+  subscribe(callback: (status: GoogleSyncStatus) => void): () => void {
+    this.statusListeners.add(callback);
+    callback(this.getSyncStatus(this.currentUser));
+    return () => {
+      this.statusListeners.delete(callback);
+    };
+  }
+
+  setCurrentUser(user: User | null): void {
+    this.currentUser = user;
+    this.notifyListeners();
+  }
 
   private getVaultStorageKey(userId: string): string {
     return `literia_gcloud_vault_${userId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
@@ -49,7 +136,10 @@ class GoogleCloudSyncService {
   /**
    * Encrypt document batch with AES-GCM 256-bit encryption
    */
-  private async encryptPayload(data: unknown, userId: string): Promise<{ iv: string; cipher: string; hash: string }> {
+  private async encryptPayload(
+    data: unknown,
+    userId: string
+  ): Promise<{ iv: string; cipher: string; hash: string }> {
     const key = await this.getVaultCryptoKey(userId);
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const jsonStr = JSON.stringify(data);
@@ -76,7 +166,11 @@ class GoogleCloudSyncService {
   /**
    * Decrypt document batch from Google Cloud Vault
    */
-  private async decryptPayload(encryptedData: string, ivBase64: string, userId: string): Promise<Document[]> {
+  private async decryptPayload(
+    encryptedData: string,
+    ivBase64: string,
+    userId: string
+  ): Promise<Document[]> {
     try {
       const key = await this.getVaultCryptoKey(userId);
       const iv = new Uint8Array(atob(ivBase64).split('').map((c) => c.charCodeAt(0)));
@@ -101,20 +195,22 @@ class GoogleCloudSyncService {
    */
   async syncPreLoginManuscripts(user: User): Promise<{ syncedCount: number; success: boolean }> {
     if (!user || !user.id) return { syncedCount: 0, success: false };
+    this.currentUser = user;
 
     try {
       this.isSyncing = true;
-      // 1. Fetch all local documents created before login
+      this.notifyListeners();
+
+      // 1. Fetch all local documents created before or during session
       const localDocs = await db.documents.toArray();
       const activeDocs = localDocs.filter((d) => !d.isDeleted);
 
       if (activeDocs.length === 0) {
-        // Check if remote cloud vault already has documents to restore
         await this.restoreFromGoogleCloud(user);
         return { syncedCount: 0, success: true };
       }
 
-      // 2. Encrypt all documents
+      // 2. Encrypt all documents client-side
       const { iv, cipher, hash } = await this.encryptPayload(activeDocs, user.id);
 
       const vaultPayload: CloudVaultPayload = {
@@ -132,7 +228,7 @@ class GoogleCloudSyncService {
       const vaultKey = this.getVaultStorageKey(user.id);
       localStorage.setItem(vaultKey, JSON.stringify(vaultPayload));
 
-      // 4. Update local documents state to marked as Cloud Synced
+      // 4. Update local documents state
       await db.transaction('rw', db.documents, async () => {
         for (const doc of activeDocs) {
           await db.documents.update(doc.id, {
@@ -141,7 +237,11 @@ class GoogleCloudSyncService {
         }
       });
 
-      // 5. Update user sync metadata
+      // 5. Clear pending offline queue
+      this.pendingOfflineDocIds.clear();
+      this.savePendingOfflineQueue();
+
+      // 6. Update user sync metadata
       localStorage.setItem(`literia_last_sync_${user.id}`, String(Date.now()));
       localStorage.setItem(`literia_synced_count_${user.id}`, String(activeDocs.length));
 
@@ -151,15 +251,103 @@ class GoogleCloudSyncService {
       return { syncedCount: 0, success: false };
     } finally {
       this.isSyncing = false;
+      this.notifyListeners();
     }
+  }
+
+  /**
+   * Handles document modification:
+   * Saves to offline pending queue and immediately syncs if online.
+   */
+  queueOrSyncDocument(docId: string, user: User | null): void {
+    if (docId) {
+      this.pendingOfflineDocIds.add(docId);
+      this.savePendingOfflineQueue();
+    }
+
+    if (user) {
+      this.currentUser = user;
+    }
+
+    const online = typeof navigator !== 'undefined' ? navigator.onLine : this.isOnline;
+    this.isOnline = online;
+
+    if (!online || !user || user.provider === 'guest') {
+      this.notifyListeners();
+      return;
+    }
+
+    // Debounce real-time cloud sync
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+    }
+
+    this.debounceTimer = window.setTimeout(() => {
+      this.syncNow(user);
+    }, 1200);
   }
 
   /**
    * Real-time Sync of current manuscripts to Google Cloud
    */
-  async syncNow(user: User): Promise<boolean> {
+  async syncNow(user: User, isReconnecting = false): Promise<boolean> {
+    const online = typeof navigator !== 'undefined' ? navigator.onLine : this.isOnline;
+    this.isOnline = online;
+
+    if (!online) {
+      this.notifyListeners();
+      return false;
+    }
+
     const res = await this.syncPreLoginManuscripts(user);
+
+    if (res.success && isReconnecting) {
+      window.dispatchEvent(
+        new CustomEvent('literia:reconnected-sync', {
+          detail: {
+            syncedCount: res.syncedCount,
+            timestamp: Date.now(),
+          },
+        })
+      );
+    }
+
     return res.success;
+  }
+
+  /**
+   * Called immediately when network connection returns:
+   * Flushes all offline changes and syncs with Google Cloud Vault.
+   */
+  async handleNetworkRestored(): Promise<void> {
+    this.isOnline = true;
+    this.notifyListeners();
+    window.dispatchEvent(
+      new CustomEvent('literia:network-status', { detail: { online: true } })
+    );
+
+    let userToSync = this.currentUser;
+    if (!userToSync) {
+      try {
+        const rawAuth = localStorage.getItem('literia_auth_session');
+        if (rawAuth) {
+          const authData = JSON.parse(rawAuth);
+          if (authData.user && authData.user.provider !== 'guest') {
+            userToSync = authData.user;
+            this.currentUser = authData.user;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse cached auth session:', e);
+      }
+    }
+
+    if (userToSync && userToSync.provider !== 'guest') {
+      const success = await this.syncNow(userToSync, true);
+      if (success) {
+        console.log('[Literia Sync] All pending work synced to Google Cloud Vault!');
+      }
+    }
   }
 
   /**
@@ -195,29 +383,36 @@ class GoogleCloudSyncService {
    * Get live sync metadata status
    */
   getSyncStatus(user: User | null): GoogleSyncStatus {
-    if (!user || user.provider === 'guest') {
+    const effectiveUser = user || this.currentUser;
+    const online = typeof navigator !== 'undefined' ? navigator.onLine : this.isOnline;
+
+    if (!effectiveUser || effectiveUser.provider === 'guest') {
       return {
         isConnected: false,
         userEmail: null,
         lastSyncedAt: null,
         syncedDocsCount: 0,
-        isSyncing: false,
-        securityProtocol: 'Local Vault (Offline)',
+        isSyncing: this.isSyncing,
+        securityProtocol: 'Local Vault (Offline-first)',
         vaultId: null,
+        isOnline: online,
+        pendingOfflineCount: this.pendingOfflineDocIds.size,
       };
     }
 
-    const lastSyncRaw = localStorage.getItem(`literia_last_sync_${user.id}`);
-    const countRaw = localStorage.getItem(`literia_synced_count_${user.id}`);
+    const lastSyncRaw = localStorage.getItem(`literia_last_sync_${effectiveUser.id}`);
+    const countRaw = localStorage.getItem(`literia_synced_count_${effectiveUser.id}`);
 
     return {
       isConnected: true,
-      userEmail: user.email || 'author@google.com',
+      userEmail: effectiveUser.email || 'author@google.com',
       lastSyncedAt: lastSyncRaw ? Number(lastSyncRaw) : Date.now(),
       syncedDocsCount: countRaw ? Number(countRaw) : 0,
       isSyncing: this.isSyncing,
       securityProtocol: 'Zero-Knowledge 256-Bit Encrypted Google Cloud Vault',
-      vaultId: this.getVaultStorageKey(user.id),
+      vaultId: this.getVaultStorageKey(effectiveUser.id),
+      isOnline: online,
+      pendingOfflineCount: this.pendingOfflineDocIds.size,
     };
   }
 
@@ -228,10 +423,13 @@ class GoogleCloudSyncService {
     if (this.syncTimer) {
       clearInterval(this.syncTimer);
     }
+    this.currentUser = user;
     if (!user || user.provider === 'guest') return;
 
     this.syncTimer = window.setInterval(() => {
-      this.syncNow(user);
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        this.syncNow(user);
+      }
     }, intervalMs);
   }
 

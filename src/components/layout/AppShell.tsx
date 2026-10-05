@@ -8,6 +8,7 @@ import { SearchModal } from './SearchModal';
 import { GlobalAiFab } from '../ai/GlobalAiFab';
 import { GlobalAiModal } from '../ai/GlobalAiModal';
 import { useApp } from '../../state';
+import { useToast } from '../ui/Toast';
 import { Eye } from 'lucide-react';
 
 interface AppShellProps {
@@ -17,6 +18,33 @@ interface AppShellProps {
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
   const { isStorageReady, distractionFree, toggleDistractionFree, currentView } = useApp();
   const [aiModalOpen, setAiModalOpen] = useState(false);
+  const { success, info } = useToast();
+
+  React.useEffect(() => {
+    const handleReconnectedSync = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const count = customEvent.detail?.syncedCount;
+      if (typeof count === 'number' && count > 0) {
+        success(`🌐 Reconnected! ${count} manuscript${count > 1 ? 's' : ''} synced immediately to Google Cloud Vault.`);
+      } else {
+        success('🌐 Reconnected! All changes are synchronized with Google Cloud Vault.');
+      }
+    };
+
+    const handleNetworkStatus = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail?.online === false) {
+        info('📴 Offline Mode: All writing is saved locally and will auto-sync once reconnected.');
+      }
+    };
+
+    window.addEventListener('literia:reconnected-sync', handleReconnectedSync);
+    window.addEventListener('literia:network-status', handleNetworkStatus);
+    return () => {
+      window.removeEventListener('literia:reconnected-sync', handleReconnectedSync);
+      window.removeEventListener('literia:network-status', handleNetworkStatus);
+    };
+  }, [success, info]);
 
   if (!isStorageReady) {
     return (

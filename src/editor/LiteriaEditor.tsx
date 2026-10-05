@@ -184,9 +184,9 @@ export const LiteriaEditor: React.FC = () => {
           });
           setHasUnsaved(false);
 
-          // Continuous sync to Google Cloud Vault when authenticated
-          if (user && user.provider !== 'guest') {
-            googleCloudSyncService.syncNow(user).catch(() => {});
+          // Queue or immediately sync to Google Cloud Vault
+          if (currentDocIdRef.current) {
+            googleCloudSyncService.queueOrSyncDocument(currentDocIdRef.current, user);
           }
         } catch (err) {
           console.error('Failed to save document:', err);
@@ -224,10 +224,11 @@ export const LiteriaEditor: React.FC = () => {
         plainTextPreview: text.slice(0, 160),
       });
       setHasUnsaved(false);
+      googleCloudSyncService.queueOrSyncDocument(currentDocIdRef.current, user);
     } finally {
       setIsSaving(false);
     }
-  }, [editor, title]);
+  }, [editor, title, user]);
 
   // Title change handler
   const handleTitleChange = (newTitle: string) => {
@@ -242,6 +243,7 @@ export const LiteriaEditor: React.FC = () => {
       try {
         await documentService.rename(currentDocIdRef.current, newTitle);
         setHasUnsaved(false);
+        googleCloudSyncService.queueOrSyncDocument(currentDocIdRef.current, user);
       } finally {
         setIsSaving(false);
       }
