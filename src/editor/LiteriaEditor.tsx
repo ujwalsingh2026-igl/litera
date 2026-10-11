@@ -439,6 +439,7 @@ export const LiteriaEditor: React.FC = () => {
       {/* Writing Canvas */}
       <div
         data-focus-depth={focusDepth}
+        data-writing-mode={settings.appearance.writingMode || 'paper'}
         className={`flex-1 overflow-y-auto px-3 sm:px-8 md:px-12 py-4 sm:py-8 flex justify-center custom-scrollbar ${
           typewriterMode ? 'typewriter-canvas' : ''
         }`}
@@ -518,7 +519,7 @@ export const LiteriaEditor: React.FC = () => {
       </div>
 
       {/* Mobile Toolbar (Visible on touch/small viewports) */}
-      <MobileEditorToolbar editor={editor} onOpenAi={() => setAiModalOpen(true)} />
+      <MobileEditorToolbar editor={editor} onOpenAi={() => setAiModalOpen(true)} stats={stats} />
 
       {/* Status Bar */}
       <EditorStatusBar

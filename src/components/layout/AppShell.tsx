@@ -71,7 +71,11 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         <Header />
 
         {/* Workspace + Right Panel Container */}
-        <div className="flex-1 flex min-h-0 overflow-hidden relative pb-14 md:pb-0">
+        <div
+          className={`flex-1 flex min-h-0 overflow-hidden relative ${
+            currentView === 'document' ? 'pb-0' : 'pb-14 md:pb-0'
+          }`}
+        >
           <main
             className={`flex-1 ${
               currentView === 'document' ? 'overflow-hidden p-0' : 'overflow-y-auto p-3 sm:p-6 lg:p-8'
@@ -97,8 +101,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         {/* Mobile / Foldable Bottom Navigation */}
         <MobileNav />
 
-        {/* Global Floating AI Button - Available Everywhere */}
-        {!distractionFree && (
+        {/* Global Floating AI Button - Available Everywhere except Document View (which has built-in AI toolbar button) */}
+        {!distractionFree && currentView !== 'document' && (
           <GlobalAiFab onClick={() => setAiModalOpen(true)} />
         )}
 
@@ -106,7 +110,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
         {distractionFree && (
           <button
             onClick={toggleDistractionFree}
-            className="fixed bottom-6 right-6 z-sticky flex items-center gap-2 px-3.5 py-2 rounded-full bg-stone-900/80 dark:bg-stone-100/80 text-white dark:text-stone-900 backdrop-blur-md text-xs font-medium shadow-soft hover:opacity-100 opacity-60 transition-opacity"
+            className="fixed bottom-6 right-6 z-[60] flex items-center gap-2 px-3.5 py-2 rounded-full bg-stone-900/80 dark:bg-stone-100/80 text-white dark:text-stone-900 backdrop-blur-md text-xs font-medium shadow-soft hover:opacity-100 opacity-60 transition-opacity"
             title="Exit distraction-free mode"
           >
             <Eye className="w-4 h-4" />

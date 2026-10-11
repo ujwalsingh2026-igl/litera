@@ -142,8 +142,8 @@ export const RightPanel: React.FC = () => {
       />
 
       {/* Panel Header */}
-      <div className="h-14 flex items-center justify-between px-3 border-b border-stone-200/70 dark:border-stone-800 shrink-0">
-        <div className="flex items-center gap-1">
+      <div className="h-14 flex items-center justify-between px-3 border-b border-stone-200/70 dark:border-stone-800 shrink-0 gap-2">
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar min-w-0 pr-1">
           {tabs.map((tab) => {
             const isActive = rightPanelTab === tab.id;
             return (
@@ -151,7 +151,7 @@ export const RightPanel: React.FC = () => {
                 key={tab.id}
                 onClick={() => setRightPanelTab(tab.id)}
                 className={cn(
-                  'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                  'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 whitespace-nowrap',
                   isActive
                     ? 'bg-stone-100 dark:bg-stone-800 text-stone-900 dark:text-stone-100 font-semibold'
                     : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
@@ -166,7 +166,7 @@ export const RightPanel: React.FC = () => {
 
         <button
           onClick={() => setRightPanelOpen(false)}
-          className="p-1 rounded-md text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
+          className="p-1.5 rounded-md text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 shrink-0"
           aria-label="Close side panel"
         >
           <X className="w-4 h-4" />

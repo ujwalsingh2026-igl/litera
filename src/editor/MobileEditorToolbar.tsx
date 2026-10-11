@@ -22,20 +22,21 @@ import { BottomSheet } from '../components/ui';
 interface MobileEditorToolbarProps {
   editor: Editor | null;
   onOpenAi?: () => void;
+  stats?: { words: number; characters: number };
 }
 
 const safeChain = (editor: Editor) => {
   return editor.isFocused ? editor.chain().focus() : editor.chain();
 };
 
-export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({ editor, onOpenAi }) => {
+export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({ editor, onOpenAi, stats }) => {
   const [sheetOpen, setSheetOpen] = useState(false);
 
   if (!editor) return null;
 
   return (
     <>
-      <div className="md:hidden fixed bottom-14 left-0 right-0 z-[90] flex items-center justify-between gap-1 px-3 py-1.5 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md border-t border-stone-200 dark:border-stone-800 shadow-md overflow-x-auto no-scrollbar">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-[80] flex items-center justify-between gap-1 px-3 py-1.5 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md border-t border-stone-200 dark:border-stone-800 shadow-lg overflow-x-auto no-scrollbar pb-[calc(0.375rem+env(safe-area-inset-bottom,0px))]">
         <div className="flex items-center gap-1">
           <button
             onClick={() => safeChain(editor).toggleBold().run()}
@@ -82,6 +83,11 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({ editor
         </div>
 
         <div className="flex items-center gap-1 shrink-0 ml-1">
+          {stats !== undefined && (
+            <span className="text-[11px] font-mono text-stone-500 dark:text-stone-400 font-medium px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800">
+              {stats.words}w
+            </span>
+          )}
           {onOpenAi && (
             <button
               onClick={onOpenAi}

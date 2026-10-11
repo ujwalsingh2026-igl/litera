@@ -31,7 +31,7 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
   }, [user]);
 
   return (
-    <footer className="h-9 px-4 border-t border-stone-200/70 dark:border-stone-800 bg-white/90 dark:bg-stone-900/90 backdrop-blur-md flex items-center justify-between text-[11px] text-stone-500 dark:text-stone-400 select-none shrink-0 font-mono">
+    <footer className="hidden md:flex h-9 px-4 border-t border-stone-200/70 dark:border-stone-800 bg-white/90 dark:bg-stone-900/90 backdrop-blur-md items-center justify-between text-[11px] text-stone-500 dark:text-stone-400 select-none shrink-0 font-mono">
       {/* Metrics */}
       <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
         <span>

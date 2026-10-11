@@ -38,7 +38,7 @@ export const FindAndReplace: React.FC<FindAndReplaceProps> = ({
   };
 
   return (
-    <div className="absolute top-2 right-4 z-popover p-3 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl shadow-soft flex flex-col gap-2 max-w-sm w-full animate-in slide-in-from-top-2 duration-150 text-xs">
+    <div className="absolute top-14 right-4 sm:right-6 z-[500] p-3 bg-white/95 dark:bg-stone-900/95 backdrop-blur-md border border-stone-200 dark:border-stone-800 rounded-xl shadow-2xl flex flex-col gap-2 max-w-sm w-full animate-in slide-in-from-top-2 duration-150 text-xs">
       <div className="flex items-center justify-between">
         <span className="font-semibold text-stone-800 dark:text-stone-200 font-serif">
           Find & Replace

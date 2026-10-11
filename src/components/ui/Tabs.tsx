@@ -44,7 +44,7 @@ export const Tabs: React.FC<TabsProps> = ({
               aria-selected={isActive}
               onClick={() => onChange(tab.id)}
               className={cn(
-                'flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap',
+                'flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap shrink-0',
                 isActive
                   ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-xs'
                   : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-200'
@@ -73,7 +73,7 @@ export const Tabs: React.FC<TabsProps> = ({
             aria-selected={isActive}
             onClick={() => onChange(tab.id)}
             className={cn(
-              'flex items-center gap-2 px-3.5 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
+              'flex items-center gap-2 px-3.5 py-2.5 text-xs font-medium border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0',
               isActive
                 ? 'border-stone-900 text-stone-900 dark:border-stone-100 dark:text-stone-100 font-semibold'
                 : 'border-transparent text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'

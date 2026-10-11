@@ -215,7 +215,7 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
             <span className="w-3.5 h-3.5 rounded-full border border-stone-300 dark:border-stone-600 bg-stone-800 dark:bg-stone-200" />
           </button>
           {showColorPicker && (
-            <div className="absolute top-full mt-1.5 left-0 p-2 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl shadow-soft flex gap-1.5 z-dropdown">
+            <div className="absolute top-full mt-1.5 left-0 p-2 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl shadow-xl flex gap-1.5 z-[500]">
               {colors.map((c) => (
                 <button
                   key={c}
