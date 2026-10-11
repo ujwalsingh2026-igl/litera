@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 @import "./editor/editor.css";
 
 :root {
@@ -45,7 +46,8 @@
 }
 
 /* Built-in Theme Definitions */
-[data-theme='dark'] {
+[data-theme='dark'],
+.dark {
   --color-bg: #141211;
   --color-surface: #1c1917;
   --color-surface-elevated: #292524;

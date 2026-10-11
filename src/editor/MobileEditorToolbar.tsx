@@ -16,6 +16,11 @@ import {
   AlignCenter,
   AlignRight,
   Sparkles,
+  Printer,
+  PenTool,
+  Palette,
+  LayoutTemplate,
+  Search,
 } from 'lucide-react';
 import { BottomSheet } from '../components/ui';
 
@@ -23,13 +28,27 @@ interface MobileEditorToolbarProps {
   editor: Editor | null;
   onOpenAi?: () => void;
   stats?: { words: number; characters: number };
+  onOpenExport?: () => void;
+  onOpenSignature?: () => void;
+  onOpenDrawing?: () => void;
+  onOpenTemplate?: () => void;
+  onToggleFindReplace?: () => void;
 }
 
 const safeChain = (editor: Editor) => {
   return editor.isFocused ? editor.chain().focus() : editor.chain();
 };
 
-export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({ editor, onOpenAi, stats }) => {
+export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
+  editor,
+  onOpenAi,
+  stats,
+  onOpenExport,
+  onOpenSignature,
+  onOpenDrawing,
+  onOpenTemplate,
+  onToggleFindReplace,
+}) => {
   const [sheetOpen, setSheetOpen] = useState(false);
 
   if (!editor) return null;
@@ -239,6 +258,74 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({ editor
               </button>
             </div>
           </div>
+
+          {(onOpenExport || onOpenSignature || onOpenDrawing || onOpenTemplate || onToggleFindReplace) && (
+            <div>
+              <div className="font-semibold text-stone-400 uppercase text-[10px] mb-2">Studio Tools</div>
+              <div className="grid grid-cols-2 gap-2">
+                {onOpenExport && (
+                  <button
+                    onClick={() => {
+                      setSheetOpen(false);
+                      onOpenExport();
+                    }}
+                    className="p-2.5 rounded-lg border border-stone-200 dark:border-stone-700 flex items-center justify-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800 transition"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    <span>Export Manuscript</span>
+                  </button>
+                )}
+                {onToggleFindReplace && (
+                  <button
+                    onClick={() => {
+                      setSheetOpen(false);
+                      onToggleFindReplace();
+                    }}
+                    className="p-2.5 rounded-lg border border-stone-200 dark:border-stone-700 flex items-center justify-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800 transition"
+                  >
+                    <Search className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    <span>Find & Replace</span>
+                  </button>
+                )}
+                {onOpenDrawing && (
+                  <button
+                    onClick={() => {
+                      setSheetOpen(false);
+                      onOpenDrawing();
+                    }}
+                    className="p-2.5 rounded-lg border border-stone-200 dark:border-stone-700 flex items-center justify-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800 transition"
+                  >
+                    <Palette className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>Drawing Studio</span>
+                  </button>
+                )}
+                {onOpenSignature && (
+                  <button
+                    onClick={() => {
+                      setSheetOpen(false);
+                      onOpenSignature();
+                    }}
+                    className="p-2.5 rounded-lg border border-stone-200 dark:border-stone-700 flex items-center justify-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800 transition"
+                  >
+                    <PenTool className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>Author Signature</span>
+                  </button>
+                )}
+                {onOpenTemplate && (
+                  <button
+                    onClick={() => {
+                      setSheetOpen(false);
+                      onOpenTemplate();
+                    }}
+                    className="p-2.5 rounded-lg border border-stone-200 dark:border-stone-700 flex items-center justify-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800 transition col-span-2"
+                  >
+                    <LayoutTemplate className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                    <span>Template Designer</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </BottomSheet>
     </>

@@ -347,9 +347,9 @@ export const LiteriaEditor: React.FC = () => {
         distractionFree ? 'pt-[env(safe-area-inset-top,0px)]' : ''
       }`}
     >
-      {/* Desktop Toolbar (Hidden in Distraction-Free mode) */}
+      {/* Desktop Toolbar (Hidden on mobile screens and in Distraction-Free mode) */}
       {!distractionFree && (
-        <>
+        <div className="hidden md:block">
           <EditorToolbar
             editor={editor}
             onToggleFindReplace={() => setFindReplaceOpen((prev) => !prev)}
@@ -417,7 +417,7 @@ export const LiteriaEditor: React.FC = () => {
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* Floating Find & Replace */}
@@ -519,7 +519,16 @@ export const LiteriaEditor: React.FC = () => {
       </div>
 
       {/* Mobile Toolbar (Visible on touch/small viewports) */}
-      <MobileEditorToolbar editor={editor} onOpenAi={() => setAiModalOpen(true)} stats={stats} />
+      <MobileEditorToolbar
+        editor={editor}
+        onOpenAi={() => setAiModalOpen(true)}
+        stats={stats}
+        onOpenExport={() => setExportModalOpen(true)}
+        onOpenSignature={() => setSignatureModalOpen(true)}
+        onOpenDrawing={() => setDrawingModalOpen(true)}
+        onOpenTemplate={() => setTemplateModalOpen(true)}
+        onToggleFindReplace={() => setFindReplaceOpen((prev) => !prev)}
+      />
 
       {/* Status Bar */}
       <EditorStatusBar
