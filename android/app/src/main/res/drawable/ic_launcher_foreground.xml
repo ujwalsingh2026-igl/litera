@@ -1,0 +1,45 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <group
+        android:pivotX="256"
+        android:pivotY="238"
+        android:scaleX="0.60"
+        android:scaleY="0.60"
+        android:translateY="18">
+        <!-- Open Book Page Spread -->
+        <path
+            android:fillColor="#292524"
+            android:strokeColor="#e7e5e4"
+            android:strokeWidth="14"
+            android:strokeLineJoin="round"
+            android:pathData="M128,350C170,332 216,338 256,360C296,338 342,332 384,350V180C342,162 296,168 256,190C216,168 170,162 128,180V350Z" />
+        <!-- Book Spine Center Binding -->
+        <path
+            android:strokeColor="#e7e5e4"
+            android:strokeWidth="12"
+            android:strokeLineCap="round"
+            android:pathData="M256,190V360" />
+        <!-- Intertwined L Monogram -->
+        <path
+            android:strokeColor="#f59e0b"
+            android:strokeWidth="20"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M196,130V306C196,306 204,316 230,316H252" />
+        <!-- Golden Quill Nib & Feather -->
+        <path
+            android:fillColor="#fef3c7"
+            android:strokeColor="#f59e0b"
+            android:strokeWidth="12"
+            android:strokeLineJoin="round"
+            android:pathData="M328,116C302,144 286,186 286,226C304,218 326,214 350,214C350,174 342,136 328,116Z" />
+        <path
+            android:strokeColor="#d97706"
+            android:strokeWidth="10"
+            android:strokeLineCap="round"
+            android:pathData="M328,116L270,270" />
+    </group>
+</vector>
