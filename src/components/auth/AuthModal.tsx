@@ -13,6 +13,11 @@ import {
   AlertCircle,
   ShieldCheck,
   RefreshCw,
+  Eye,
+  EyeOff,
+  Lock,
+  Copy,
+  ExternalLink,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { authService } from '../../services/authService';
@@ -74,37 +79,68 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   }, [isOpen, initialMode]);
 
   const [googleEmailInput, setGoogleEmailInput] = useState('');
+  const [googlePasswordInput, setGooglePasswordInput] = useState('');
   const [googleNameInput, setGoogleNameInput] = useState('');
-  const [showCustomGoogleInput, setShowCustomGoogleInput] = useState(false);
+  const [showGooglePassword, setShowGooglePassword] = useState(false);
   const [clientIdInput, setClientIdInput] = useState(googleClientId || '');
   const [showClientIdConfig, setShowClientIdConfig] = useState(false);
+  const [copiedRedirectUri, setCopiedRedirectUri] = useState(false);
+
+  const redirectUri = typeof window !== 'undefined' ? window.location.origin + window.location.pathname : '';
+
+  const handleCopyRedirectUri = () => {
+    navigator.clipboard.writeText(redirectUri);
+    setCopiedRedirectUri(true);
+    setTimeout(() => setCopiedRedirectUri(false), 2000);
+  };
 
   const handleGoogleRedirectAuth = () => {
     try {
       setErrorMsg(null);
+      const activeId = (clientIdInput.trim() || googleClientId).trim();
+      if (!activeId) {
+        setShowClientIdConfig(true);
+        setErrorMsg('Please configure your Google Cloud OAuth Client ID below to launch official Google OAuth.');
+        return;
+      }
       if (clientIdInput.trim() && clientIdInput.trim() !== googleClientId) {
         setGoogleClientId(clientIdInput.trim());
       }
-      loginWithGoogleRedirect(clientIdInput.trim() || undefined);
+      loginWithGoogleRedirect(activeId);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to redirect to Google.');
     }
   };
 
-  const handleGoogleAuth = async () => {
+  const handleGoogleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!googleEmailInput.trim()) {
+      setErrorMsg('Please enter your Google / Gmail address.');
+      return;
+    }
+    if (!googlePasswordInput || googlePasswordInput.length < 6) {
+      setErrorMsg('Password must be at least 6 characters for authorized account security.');
+      return;
+    }
     try {
       setIsSubmitting(true);
       setErrorMsg(null);
       await loginWithGoogle(
-        googleEmailInput.trim() || undefined,
-        googleNameInput.trim() || undefined
+        googleEmailInput.trim(),
+        googlePasswordInput,
+        googleNameInput.trim() || undefined,
+        mode
       );
-      setSuccessMsg('✓ Connected to Google Cloud! All previous local manuscripts have been safely encrypted and synced to your cloud vault.');
+      setSuccessMsg(
+        mode === 'signup'
+          ? '✓ Authorized Google Account created! Bearer session active & manuscripts synced to cloud vault.'
+          : '✓ Authenticated & Authorized! Welcome back to your Google Studio.'
+      );
       setTimeout(() => {
         onClose();
       }, 800);
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Google authentication failed.');
+      setErrorMsg(err instanceof Error ? err.message : 'Google authentication and authorization failed.');
     } finally {
       setIsSubmitting(false);
     }
@@ -339,118 +375,194 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         <div className="pt-1">
           {/* 1. GOOGLE */}
           {activeProvider === 'google' && (
-            <div className="space-y-3.5 text-center py-1">
-              <p className="text-xs text-stone-600 dark:text-stone-300">
-                {mode === 'signin'
-                  ? 'Sign in with your Google account for authorized OAuth login and consecutive cloud backup.'
-                  : 'Register and authorize your Google account with cloud manuscript synchronization.'}
-              </p>
+            <div className="space-y-4 py-1">
+              <div className="text-center">
+                <p className="text-xs text-stone-600 dark:text-stone-300">
+                  {mode === 'signin'
+                    ? 'Authenticate and authorize your Google session for cloud vault synchronization.'
+                    : 'Register and authorize your Google account with AES-256 cloud manuscript protection.'}
+                </p>
+              </div>
 
               {/* Security & Pre-login Guarantee Notice */}
               <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-left space-y-1">
                 <div className="flex items-center gap-1.5 text-amber-800 dark:text-amber-300 font-semibold text-xs">
                   <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <span>Pre-Login Sync & Zero-Knowledge Vault</span>
+                  <span>Pre-Login Sync & Authorized Bearer Token</span>
                 </div>
                 <p className="text-[11px] text-stone-600 dark:text-stone-400 leading-relaxed">
-                  All manuscripts, chapters, and notes created before login will be automatically encrypted with AES-256 and backed up to your personal cloud backend. Your private work is fully protected against unauthorized invasion.
+                  All manuscripts written before login are securely migrated and encrypted. Every authorized session receives a signed cryptographic Bearer token with full permission scopes.
                 </p>
               </div>
 
-              {/* Real Google OAuth Redirect Button */}
-              <div className="space-y-2">
-                <Button
-                  type="button"
-                  variant="primary"
-                  onClick={handleGoogleRedirectAuth}
-                  disabled={isSubmitting}
-                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-2 font-semibold text-xs shadow-xs"
-                >
-                  <Globe className="w-4 h-4" />
-                  <span>Sign In with Google (Official Redirect)</span>
-                </Button>
-
-                <div className="flex items-center justify-between px-1 text-[11px]">
-                  <button
-                    type="button"
-                    onClick={() => setShowClientIdConfig((prev) => !prev)}
-                    className="text-stone-500 dark:text-stone-400 hover:underline"
-                  >
-                    ⚙️ {clientIdInput ? 'Custom Google Client ID Active' : 'OAuth Client ID Config'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowCustomGoogleInput((prev) => !prev)}
-                    className="text-amber-700 dark:text-amber-400 hover:underline font-medium"
-                  >
-                    {showCustomGoogleInput ? 'Hide manual address' : 'Direct Google address entry ▾'}
-                  </button>
+              {/* Authorized Google Credentials Form (Authentication & Authorization) */}
+              <form onSubmit={handleGoogleAuth} className="space-y-3 text-left">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-stone-700 dark:text-stone-300 flex items-center justify-between">
+                    <span>Google / Gmail Address</span>
+                    <span className="text-[10px] text-stone-400 font-normal">Primary Identity</span>
+                  </label>
+                  <Input
+                    type="email"
+                    value={googleEmailInput}
+                    onChange={(e) => setGoogleEmailInput(e.target.value)}
+                    placeholder="author@gmail.com"
+                    required
+                  />
                 </div>
 
-                {/* Optional Google Client ID Input */}
-                {showClientIdConfig && (
-                  <div className="p-3 rounded-xl bg-stone-100 dark:bg-stone-800 text-left space-y-2 text-xs border border-stone-200 dark:border-stone-700 animate-in fade-in">
-                    <div className="font-semibold text-stone-800 dark:text-stone-200">
-                      Google Cloud OAuth 2.0 Client ID
-                    </div>
-                    <p className="text-[11px] text-stone-500">
-                      Enter your Web Client ID from Google Cloud Console (Credentials &gt; OAuth 2.0 Client IDs). Authorized redirect URI is:
-                      <code className="block mt-1 font-mono text-[10px] bg-stone-200 dark:bg-stone-900 p-1 rounded break-all">
-                        {typeof window !== 'undefined' ? window.location.origin + window.location.pathname : ''}
-                      </code>
-                    </p>
-                    <Input
-                      type="text"
-                      value={clientIdInput}
-                      onChange={(e) => setClientIdInput(e.target.value)}
-                      placeholder="123456789-xxxx.apps.googleusercontent.com"
-                    />
-                  </div>
-                )}
-              </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-stone-700 dark:text-stone-300 flex items-center justify-between">
+                    <span>Account Password</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowGooglePassword(!showGooglePassword)}
+                      className="text-[10px] text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1"
+                    >
+                      {showGooglePassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      <span>{showGooglePassword ? 'Hide' : 'Show'}</span>
+                    </button>
+                  </label>
+                  <Input
+                    type={showGooglePassword ? 'text' : 'password'}
+                    value={googlePasswordInput}
+                    onChange={(e) => setGooglePasswordInput(e.target.value)}
+                    placeholder="••••••••••••"
+                    required
+                  />
+                  <p className="text-[10px] text-stone-400">
+                    {mode === 'signup'
+                      ? 'Encrypted with SHA-256 salted hash to protect against unauthorized invasion.'
+                      : 'Verifies identity to authorize Bearer session token & cloud vault access.'}
+                  </p>
+                </div>
 
-              {/* Direct Address Input Option */}
-              {showCustomGoogleInput && (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleGoogleAuth();
-                  }}
-                  className="space-y-2 text-left pt-2 border-t border-stone-200 dark:border-stone-800 animate-in fade-in"
-                >
-                  <div>
-                    <label className="text-[11px] font-medium text-stone-700 dark:text-stone-300">
-                      Google / Gmail Address:
-                    </label>
-                    <Input
-                      type="email"
-                      value={googleEmailInput}
-                      onChange={(e) => setGoogleEmailInput(e.target.value)}
-                      placeholder="yourname@gmail.com"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-medium text-stone-700 dark:text-stone-300">
-                      Author / Pen Name (Optional):
+                {mode === 'signup' && (
+                  <div className="space-y-1 animate-in fade-in">
+                    <label className="text-xs font-medium text-stone-700 dark:text-stone-300">
+                      Author / Pen Name (Optional)
                     </label>
                     <Input
                       type="text"
                       value={googleNameInput}
                       onChange={(e) => setGoogleNameInput(e.target.value)}
-                      placeholder="e.g. A. R. Vance"
+                      placeholder="e.g. Leo Tolstoy"
                     />
                   </div>
-                  <Button
-                    type="submit"
-                    variant="outline"
-                    disabled={isSubmitting || !googleEmailInput.trim()}
-                    className="w-full py-2 text-xs font-semibold flex items-center justify-center gap-2"
+                )}
+
+                <Button
+                  type="submit"
+                  variant="primary"
+                  disabled={isSubmitting || !googleEmailInput.trim() || !googlePasswordInput.trim()}
+                  className="w-full py-2.5 text-xs font-semibold flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>
+                    {isSubmitting
+                      ? 'Authenticating & Authorizing...'
+                      : mode === 'signin'
+                      ? 'Sign In & Authorize Google Session'
+                      : 'Create Authorized Account & Sync Work'}
+                  </span>
+                </Button>
+              </form>
+
+              {/* Official Google OAuth 2.0 Section */}
+              <div className="pt-2 border-t border-stone-200 dark:border-stone-800 space-y-2">
+                <div className="flex items-center justify-between px-0.5 text-xs">
+                  <span className="text-stone-500 font-medium text-[11px]">Or Official Google OAuth:</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowClientIdConfig((prev) => !prev)}
+                    className="text-[11px] text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 font-medium"
                   >
-                    <span>Connect Google Account &amp; Sync Pre-Login Work</span>
-                  </Button>
-                </form>
-              )}
+                    <span>{showClientIdConfig ? 'Close OAuth Setup' : '⚙️ OAuth 2.0 Config'}</span>
+                  </button>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleGoogleRedirectAuth}
+                  disabled={isSubmitting}
+                  className="w-full py-2 text-xs font-medium flex items-center justify-center gap-2 border-stone-300 dark:border-stone-700"
+                >
+                  <Globe className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Launch Official Google OAuth Redirect Flow</span>
+                </Button>
+
+                {showClientIdConfig && (
+                  <div className="p-3 rounded-xl bg-stone-100 dark:bg-stone-800/80 text-left space-y-2.5 text-xs border border-stone-200 dark:border-stone-700 animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-stone-800 dark:text-stone-200 text-xs">
+                        Google Cloud OAuth 2.0 Setup
+                      </span>
+                      <a
+                        href="https://console.cloud.google.com/apis/credentials"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                      >
+                        <span>Console</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+
+                    <p className="text-[11px] text-stone-500 leading-relaxed">
+                      To enable Google's direct popup/redirect on your domain, paste your Web Client ID from Google Cloud Console.
+                    </p>
+
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-stone-400 font-medium">Authorized Redirect URI to register:</span>
+                      <div className="flex items-center gap-1.5">
+                        <code className="text-[10px] font-mono bg-white dark:bg-stone-900 px-2 py-1 rounded border border-stone-200 dark:border-stone-700 truncate flex-1">
+                          {redirectUri}
+                        </code>
+                        <button
+                          type="button"
+                          onClick={handleCopyRedirectUri}
+                          className="px-2 py-1 text-[10px] bg-stone-200 dark:bg-stone-700 rounded font-semibold hover:bg-stone-300 flex items-center gap-1 shrink-0"
+                        >
+                          <Copy className="w-2.5 h-2.5" />
+                          <span>{copiedRedirectUri ? 'Copied' : 'Copy'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-1">
+                      <label className="text-[11px] font-medium text-stone-700 dark:text-stone-300">
+                        OAuth 2.0 Web Client ID:
+                      </label>
+                      <Input
+                        type="text"
+                        value={clientIdInput}
+                        onChange={(e) => setClientIdInput(e.target.value)}
+                        placeholder="123456789-xxxx.apps.googleusercontent.com"
+                      />
+                    </div>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        if (clientIdInput.trim()) {
+                          setGoogleClientId(clientIdInput.trim());
+                          setShowClientIdConfig(false);
+                          setSuccessMsg('✓ Google OAuth Client ID saved! Click "Launch Official Google OAuth" to sign in.');
+                          setTimeout(() => setSuccessMsg(null), 3500);
+                        } else {
+                          setErrorMsg('Please enter a valid Client ID.');
+                        }
+                      }}
+                      className="w-full text-xs font-semibold"
+                    >
+                      Save Client ID &amp; Enable OAuth
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

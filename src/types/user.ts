@@ -18,6 +18,10 @@ export interface User {
   provider: AuthProviderType;
   secretCode?: string;
   isCloudSynced: boolean;
+  authToken?: string;
+  authScopes?: string[];
+  isAuthorized?: boolean;
+  tokenExpiresAt?: number;
   lastLoginAt: number;
   createdAt: number;
   updatedAt: number;
@@ -27,5 +31,8 @@ export interface User {
 export interface AuthSession {
   user: User | null;
   token?: string;
+  scopes?: string[];
+  isAuthorized: boolean;
   isOfflineMode: boolean;
 }
+

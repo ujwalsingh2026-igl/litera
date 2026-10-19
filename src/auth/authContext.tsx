@@ -14,7 +14,13 @@ interface AuthContextType {
 
   // Real Google & Individual Auth Actions
   loginWithGoogleRedirect: (customClientId?: string) => void;
-  loginWithGoogle: (email?: string, name?: string) => Promise<User>;
+  loginWithGoogle: (
+    email: string,
+    password?: string,
+    displayName?: string,
+    mode?: 'signin' | 'signup'
+  ) => Promise<User>;
+  loginWithGoogleJwtCredential: (credential: string) => Promise<User>;
   registerIndividualAccount: (email: string, password: string, displayName?: string) => Promise<User>;
   loginWithGmail: (email: string, password?: string) => Promise<User>;
   loginWithApple: () => Promise<User>;
@@ -70,8 +76,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     authService.initiateGoogleRedirectLogin(customClientId || googleClientId);
   };
 
-  const loginWithGoogle = async (email?: string, name?: string): Promise<User> => {
-    const newUser = await authService.signInWithGoogle(email, name);
+  const loginWithGoogle = async (
+    email: string,
+    password?: string,
+    displayName?: string,
+    mode: 'signin' | 'signup' = 'signin'
+  ): Promise<User> => {
+    const newUser = await authService.signInWithGoogle(email, password, displayName, mode);
+    setUser(newUser);
+    return newUser;
+  };
+
+  const loginWithGoogleJwtCredential = async (credential: string): Promise<User> => {
+    const newUser = await authService.handleGoogleJwtCredential(credential);
     setUser(newUser);
     return newUser;
   };
@@ -128,6 +145,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       email: 'author@local.literia',
       provider: 'guest',
       isCloudSynced: false,
+      isAuthorized: false,
       lastLoginAt: Date.now(),
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -149,6 +167,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         loginWithGoogleRedirect,
         loginWithGoogle,
+        loginWithGoogleJwtCredential,
         registerIndividualAccount,
         loginWithGmail,
         loginWithApple,

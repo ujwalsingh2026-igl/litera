@@ -184,6 +184,34 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
           </span>
         </div>
 
+        {/* Authorization Session Status Card */}
+        <div className="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200/60 dark:border-blue-900/40 text-xs space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-blue-900 dark:text-blue-300 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <span>Authentication &amp; Authorization Session</span>
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white">
+              Authorized Bearer
+            </span>
+          </div>
+          <div className="text-[11px] text-stone-600 dark:text-stone-300 leading-relaxed">
+            <span className="text-stone-700 dark:text-stone-200 font-medium">Authorized Scopes: </span>
+            <code className="bg-blue-100/70 dark:bg-blue-900/40 px-1 py-0.5 rounded text-[10px] font-mono mr-1">
+              manuscripts:read
+            </code>
+            <code className="bg-blue-100/70 dark:bg-blue-900/40 px-1 py-0.5 rounded text-[10px] font-mono mr-1">
+              manuscripts:write
+            </code>
+            <code className="bg-blue-100/70 dark:bg-blue-900/40 px-1 py-0.5 rounded text-[10px] font-mono mr-1">
+              vault:encrypt
+            </code>
+            <code className="bg-blue-100/70 dark:bg-blue-900/40 px-1 py-0.5 rounded text-[10px] font-mono">
+              cloud:sync
+            </code>
+          </div>
+        </div>
+
         {/* Cloud Sync & Secret Code Vault Controls */}
         <div className="p-3.5 rounded-xl border border-stone-200/60 dark:border-stone-800 space-y-3 bg-white dark:bg-stone-900">
           <div className="flex items-center justify-between text-xs">

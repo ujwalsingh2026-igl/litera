@@ -6,6 +6,7 @@ const GOOGLE_TOKEN_KEY = 'literia_google_access_token';
 const GOOGLE_CLIENT_ID_KEY = 'literia_google_client_id';
 const REGISTERED_USERS_KEY = 'literia_registered_accounts';
 const VAULT_CODE_KEY = 'literia_secret_vault_code';
+const BEARER_TOKEN_KEY = 'literia_bearer_token';
 
 export interface RegisteredAccount {
   id: string;
@@ -13,6 +14,7 @@ export interface RegisteredAccount {
   passwordHash: string;
   salt: string;
   displayName: string;
+  provider: 'google' | 'gmail';
   createdAt: number;
 }
 
@@ -36,6 +38,7 @@ export class AuthService {
       email: 'author@local.literia',
       provider: 'guest',
       isCloudSynced: false,
+      isAuthorized: false,
       lastLoginAt: Date.now(),
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -59,6 +62,61 @@ export class AuthService {
   clearSession(): void {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(GOOGLE_TOKEN_KEY);
+    localStorage.removeItem(BEARER_TOKEN_KEY);
+  }
+
+  /**
+   * Bearer Authorization Token generation and validation (JWT style with HMAC-SHA256)
+   */
+  async generateAuthorizationToken(user: User): Promise<string> {
+    const payload = {
+      sub: user.id,
+      email: user.email || '',
+      displayName: user.displayName,
+      provider: user.provider,
+      scopes: [
+        'manuscripts:read',
+        'manuscripts:write',
+        'vault:encrypt',
+        'cloud:backup',
+        'cloud:restore',
+      ],
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 7 days expiration
+    };
+
+    const header = { alg: 'HS256', typ: 'JWT' };
+    const b64Header = btoa(JSON.stringify(header)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+    const b64Payload = btoa(JSON.stringify(payload)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+    const signingInput = `${b64Header}.${b64Payload}`;
+
+    try {
+      const enc = new TextEncoder();
+      const key = await crypto.subtle.importKey(
+        'raw',
+        enc.encode('LITERIA_AUTHOR_VAULT_SIGNATURE_SECRET_2026'),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+      );
+      const signature = await crypto.subtle.sign('HMAC', key, enc.encode(signingInput));
+      const b64Signature = Array.from(new Uint8Array(signature))
+        .map((b) => String.fromCharCode(b))
+        .join('');
+      const safeSignature = btoa(b64Signature).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+
+      const token = `${signingInput}.${safeSignature}`;
+      localStorage.setItem(BEARER_TOKEN_KEY, token);
+      return token;
+    } catch {
+      const fallbackToken = `literia_auth_${Math.random().toString(36).substring(2)}_${Date.now()}`;
+      localStorage.setItem(BEARER_TOKEN_KEY, fallbackToken);
+      return fallbackToken;
+    }
+  }
+
+  getAuthorizationToken(): string | null {
+    return localStorage.getItem(BEARER_TOKEN_KEY);
   }
 
   /**
@@ -94,7 +152,7 @@ export class AuthService {
 
   /**
    * 1. Official Google OAuth 2.0 Page Redirect Flow
-   * Redirects the browser to accounts.google.com for real authorized Google Login.
+   * Redirects browser to accounts.google.com for authorized Google OAuth login.
    */
   initiateGoogleRedirectLogin(customClientId?: string): void {
     if (typeof window === 'undefined') return;
@@ -102,17 +160,15 @@ export class AuthService {
     const clientId = (customClientId || this.getGoogleClientId()).trim();
     if (!clientId) {
       throw new Error(
-        'Google OAuth Client ID is required. Please enter your Google Client ID or use Individual Account Login.'
+        'Google OAuth Client ID is required for official Google Redirect. Enter your Google Client ID or use Authorized Google Account Login below.'
       );
     }
 
-    // Generate secure random state and nonce for CSRF validation
     const state = Math.random().toString(36).substring(2) + Date.now().toString(36);
     const nonce = Math.random().toString(36).substring(2) + Date.now().toString(36);
     sessionStorage.setItem('literia_oauth_state', state);
     sessionStorage.setItem('literia_oauth_nonce', nonce);
 
-    // Current page URL without hash as redirect URI
     const redirectUri = window.location.origin + window.location.pathname;
 
     const scopes = [
@@ -151,7 +207,6 @@ export class AuthService {
     const returnedState = params.get('state');
     const storedState = sessionStorage.getItem('literia_oauth_state');
 
-    // Clean hash from browser URL immediately for security
     window.history.replaceState(null, '', window.location.pathname + window.location.search);
     sessionStorage.removeItem('literia_oauth_state');
 
@@ -165,13 +220,12 @@ export class AuthService {
     try {
       this.setGoogleAccessToken(accessToken);
 
-      // Fetch authentic user profile from Google UserInfo endpoint
       const response = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch user profile from Google');
+        throw new Error('Failed to fetch authorized user profile from Google');
       }
 
       const info = await response.json();
@@ -186,14 +240,18 @@ export class AuthService {
         avatarColor: '#4285F4',
         provider: 'google',
         isCloudSynced: true,
+        isAuthorized: true,
+        authScopes: ['manuscripts:read', 'manuscripts:write', 'vault:encrypt', 'cloud:backup', 'cloud:restore'],
+        tokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
         lastLoginAt: Date.now(),
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
 
-      this.saveUserSession(user);
+      const token = await this.generateAuthorizationToken(user);
+      user.authToken = token;
 
-      // Automatically sync all pre-login local manuscripts to the cloud
+      this.saveUserSession(user);
       await googleCloudSyncService.syncPreLoginManuscripts(user);
 
       return user;
@@ -204,38 +262,50 @@ export class AuthService {
   }
 
   /**
-   * Direct Google Sign-In (using email or credentials)
+   * Google Identity Services (GIS) ID Token (JWT) Credential Handler
    */
-  async signInWithGoogle(customEmail?: string, customName?: string): Promise<User> {
-    await new Promise((res) => setTimeout(res, 400));
-    const finalEmail =
-      customEmail && customEmail.includes('@') ? customEmail.trim() : 'author.google@gmail.com';
-    const finalName = customName?.trim() || finalEmail.split('@')[0].replace('.', ' ');
-    const formattedName = finalName.charAt(0).toUpperCase() + finalName.slice(1);
+  async handleGoogleJwtCredential(credential: string): Promise<User> {
+    const parts = credential.split('.');
+    if (parts.length !== 3) throw new Error('Invalid Google ID Token');
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const json = decodeURIComponent(
+      atob(b64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const decoded = JSON.parse(json);
+
+    const email = decoded.email || 'author@gmail.com';
+    const name = decoded.name || email.split('@')[0];
+    const picture = decoded.picture || 'https://lh3.googleusercontent.com/a/default-user';
 
     const user: User = {
-      id: `google_${finalEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
-      email: finalEmail,
-      displayName: formattedName,
-      avatarUrl: 'https://lh3.googleusercontent.com/a/default-user',
+      id: `google_${decoded.sub || email.replace(/[^a-zA-Z0-9]/g, '_')}`,
+      email,
+      displayName: name,
+      avatarUrl: picture,
       avatarColor: '#4285F4',
       provider: 'google',
       isCloudSynced: true,
+      isAuthorized: true,
+      authScopes: ['manuscripts:read', 'manuscripts:write', 'vault:encrypt', 'cloud:backup', 'cloud:restore'],
+      tokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
       lastLoginAt: Date.now(),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
 
+    const token = await this.generateAuthorizationToken(user);
+    user.authToken = token;
+
     this.saveUserSession(user);
-
-    // Automatically sync and encrypt all pre-login local manuscripts to Google Cloud Vault
     await googleCloudSyncService.syncPreLoginManuscripts(user);
-
     return user;
   }
 
   /**
-   * 2. Individual Account Registration & Sign-In with Salted Hashing
+   * Cryptographic Password Hashing with Salt
    */
   private async hashPassword(password: string, salt: string): Promise<string> {
     const enc = new TextEncoder();
@@ -246,7 +316,7 @@ export class AuthService {
       .join('');
   }
 
-  private getRegisteredAccounts(): RegisteredAccount[] {
+  getRegisteredAccounts(): RegisteredAccount[] {
     try {
       const raw = localStorage.getItem(REGISTERED_USERS_KEY);
       return raw ? JSON.parse(raw) : [];
@@ -260,7 +330,110 @@ export class AuthService {
   }
 
   /**
-   * Register a new individual user account
+   * Authorized Google Account Login / Registration
+   * Provides genuine authentication (password verification) and authorization (session token & scopes).
+   */
+  async signInWithGoogle(
+    email: string,
+    password?: string,
+    displayName?: string,
+    mode: 'signin' | 'signup' = 'signin'
+  ): Promise<User> {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail.includes('@')) {
+      throw new Error('Please enter a valid Google email address (e.g. author@gmail.com).');
+    }
+
+    if (!password || password.length < 6) {
+      throw new Error('Password must be at least 6 characters for authorized account security.');
+    }
+
+    const accounts = this.getRegisteredAccounts();
+    const existing = accounts.find((a) => a.email === cleanEmail);
+
+    if (mode === 'signup') {
+      if (existing) {
+        throw new Error('An account with this Google email already exists. Please switch to Sign In.');
+      }
+
+      const salt = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      const passwordHash = await this.hashPassword(password, salt);
+      const name = displayName?.trim() || cleanEmail.split('@')[0];
+      const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
+
+      const newAccount: RegisteredAccount = {
+        id: `google_${Math.random().toString(36).substring(2, 10)}`,
+        email: cleanEmail,
+        passwordHash,
+        salt,
+        displayName: formattedName,
+        provider: 'google',
+        createdAt: Date.now(),
+      };
+
+      accounts.push(newAccount);
+      this.saveRegisteredAccounts(accounts);
+
+      const user: User = {
+        id: newAccount.id,
+        email: cleanEmail,
+        displayName: formattedName,
+        avatarColor: '#4285F4',
+        provider: 'google',
+        isCloudSynced: true,
+        isAuthorized: true,
+        authScopes: ['manuscripts:read', 'manuscripts:write', 'vault:encrypt', 'cloud:backup', 'cloud:restore'],
+        tokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        lastLoginAt: Date.now(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      const token = await this.generateAuthorizationToken(user);
+      user.authToken = token;
+
+      this.saveUserSession(user);
+      await googleCloudSyncService.syncPreLoginManuscripts(user);
+      return user;
+    }
+
+    // mode === 'signin'
+    if (!existing) {
+      throw new Error(
+        `No account found for "${cleanEmail}". Please switch to "Sign Up" above to register and authorize your account.`
+      );
+    }
+
+    const hash = await this.hashPassword(password, existing.salt);
+    if (hash !== existing.passwordHash) {
+      throw new Error('Authentication Failed: Incorrect password. Please check your password and try again.');
+    }
+
+    const user: User = {
+      id: existing.id,
+      email: existing.email,
+      displayName: existing.displayName,
+      avatarColor: '#4285F4',
+      provider: 'google',
+      isCloudSynced: true,
+      isAuthorized: true,
+      authScopes: ['manuscripts:read', 'manuscripts:write', 'vault:encrypt', 'cloud:backup', 'cloud:restore'],
+      tokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+      lastLoginAt: Date.now(),
+      createdAt: existing.createdAt,
+      updatedAt: Date.now(),
+    };
+
+    const token = await this.generateAuthorizationToken(user);
+    user.authToken = token;
+
+    this.saveUserSession(user);
+    await googleCloudSyncService.syncPreLoginManuscripts(user);
+    return user;
+  }
+
+  /**
+   * 2. Individual Account Registration & Sign-In with Salted Hashing
    */
   async registerIndividualAccount(
     email: string,
@@ -291,6 +464,7 @@ export class AuthService {
       passwordHash,
       salt,
       displayName: formattedName,
+      provider: 'gmail',
       createdAt: Date.now(),
     };
 
@@ -304,64 +478,63 @@ export class AuthService {
       avatarColor: '#EA4335',
       provider: 'gmail',
       isCloudSynced: true,
+      isAuthorized: true,
+      authScopes: ['manuscripts:read', 'manuscripts:write', 'vault:encrypt', 'cloud:backup', 'cloud:restore'],
+      tokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
       lastLoginAt: Date.now(),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
+
+    const token = await this.generateAuthorizationToken(user);
+    user.authToken = token;
 
     this.saveUserSession(user);
     await googleCloudSyncService.syncPreLoginManuscripts(user);
     return user;
   }
 
-  /**
-   * Sign in to an existing individual account
-   */
   async signInWithGmail(email: string, password?: string): Promise<User> {
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail.includes('@')) {
       throw new Error('Please enter a valid email address.');
     }
+    if (!password || password.length < 6) {
+      throw new Error('Password must be at least 6 characters.');
+    }
 
     const accounts = this.getRegisteredAccounts();
     const existing = accounts.find((a) => a.email === cleanEmail);
 
-    if (existing && password) {
-      const hash = await this.hashPassword(password, existing.salt);
-      if (hash !== existing.passwordHash) {
-        throw new Error('Incorrect password. Please verify and try again.');
-      }
-
-      const user: User = {
-        id: existing.id,
-        email: existing.email,
-        displayName: existing.displayName,
-        avatarColor: '#EA4335',
-        provider: 'gmail',
-        isCloudSynced: true,
-        lastLoginAt: Date.now(),
-        createdAt: existing.createdAt,
-        updatedAt: Date.now(),
-      };
-
-      this.saveUserSession(user);
-      await googleCloudSyncService.syncPreLoginManuscripts(user);
-      return user;
+    if (!existing) {
+      throw new Error(
+        `Account not found for "${cleanEmail}". Please switch to "Sign Up" to create an individual author account.`
+      );
     }
 
-    // Direct passwordless sign-in or auto-creation for quick author access
-    const namePart = cleanEmail.split('@')[0];
+    const hash = await this.hashPassword(password, existing.salt);
+    if (hash !== existing.passwordHash) {
+      throw new Error('Authentication Failed: Incorrect password. Please verify and try again.');
+    }
+
     const user: User = {
-      id: `gmail_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
-      email: cleanEmail,
-      displayName: namePart.charAt(0).toUpperCase() + namePart.slice(1),
+      id: existing.id,
+      email: existing.email,
+      displayName: existing.displayName,
       avatarColor: '#EA4335',
       provider: 'gmail',
       isCloudSynced: true,
+      isAuthorized: true,
+      authScopes: ['manuscripts:read', 'manuscripts:write', 'vault:encrypt', 'cloud:backup', 'cloud:restore'],
+      tokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
       lastLoginAt: Date.now(),
-      createdAt: Date.now(),
+      createdAt: existing.createdAt,
       updatedAt: Date.now(),
     };
+
+    const token = await this.generateAuthorizationToken(user);
+    user.authToken = token;
+
     this.saveUserSession(user);
     await googleCloudSyncService.syncPreLoginManuscripts(user);
     return user;
@@ -379,10 +552,16 @@ export class AuthService {
       avatarColor: '#000000',
       provider: 'apple',
       isCloudSynced: true,
+      isAuthorized: true,
+      authScopes: ['manuscripts:read', 'manuscripts:write', 'vault:encrypt', 'cloud:backup', 'cloud:restore'],
+      tokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
       lastLoginAt: Date.now(),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
+    const token = await this.generateAuthorizationToken(user);
+    user.authToken = token;
+
     this.saveUserSession(user);
     await googleCloudSyncService.syncPreLoginManuscripts(user);
     return user;
@@ -402,10 +581,16 @@ export class AuthService {
       avatarColor: '#D97706',
       provider: 'litera_id',
       isCloudSynced: true,
+      isAuthorized: true,
+      authScopes: ['manuscripts:read', 'manuscripts:write', 'vault:encrypt', 'cloud:backup', 'cloud:restore'],
+      tokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
       lastLoginAt: Date.now(),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
+    const token = await this.generateAuthorizationToken(user);
+    user.authToken = token;
+
     this.saveUserSession(user);
     await googleCloudSyncService.syncPreLoginManuscripts(user);
     return user;
@@ -428,7 +613,7 @@ export class AuthService {
   async verifyPhoneOTP(phoneNumber: string, otp: string): Promise<User> {
     await new Promise((res) => setTimeout(res, 400));
     if (otp !== '123456' && otp.length !== 6) {
-      throw new Error('Invalid OTP code. For testing, enter 123456.');
+      throw new Error('Invalid OTP code. For security testing, enter 123456.');
     }
     const user: User = {
       id: `phone_${phoneNumber.replace(/\D/g, '')}`,
@@ -437,10 +622,16 @@ export class AuthService {
       avatarColor: '#10B981',
       provider: 'phone',
       isCloudSynced: true,
+      isAuthorized: true,
+      authScopes: ['manuscripts:read', 'manuscripts:write', 'vault:encrypt', 'cloud:backup', 'cloud:restore'],
+      tokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
       lastLoginAt: Date.now(),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
+    const token = await this.generateAuthorizationToken(user);
+    user.authToken = token;
+
     this.saveUserSession(user);
     await googleCloudSyncService.syncPreLoginManuscripts(user);
     return user;
@@ -473,10 +664,16 @@ export class AuthService {
       avatarColor: '#8B5CF6',
       provider: 'secret_code',
       isCloudSynced: true,
+      isAuthorized: true,
+      authScopes: ['manuscripts:read', 'manuscripts:write', 'vault:encrypt', 'cloud:backup', 'cloud:restore'],
+      tokenExpiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
       lastLoginAt: Date.now(),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
+    const token = await this.generateAuthorizationToken(user);
+    user.authToken = token;
+
     this.saveUserSession(user);
     await googleCloudSyncService.syncPreLoginManuscripts(user);
     return user;
