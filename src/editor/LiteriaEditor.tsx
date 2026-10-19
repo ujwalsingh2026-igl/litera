@@ -144,21 +144,27 @@ export const LiteriaEditor: React.FC = () => {
       const newStats = calculateEnhancedStats(doc?.type || 'blank', text, html);
       setStats(newStats);
 
-      // Typewriter mode center scroll
-      if (typewriterMode) {
-        window.requestAnimationFrame(() => {
-          const selection = window.getSelection();
-          if (selection && selection.focusNode) {
-            const el =
-              selection.focusNode instanceof HTMLElement
-                ? selection.focusNode
-                : selection.focusNode.parentElement;
-            if (el) {
+      // Smooth dynamic scrolling so the background page moves with the writing
+      window.requestAnimationFrame(() => {
+        const selection = window.getSelection();
+        if (selection && selection.focusNode) {
+          const el =
+            selection.focusNode instanceof HTMLElement
+              ? selection.focusNode
+              : selection.focusNode.parentElement;
+          if (el) {
+            if (typewriterMode) {
               el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else {
+              const rect = el.getBoundingClientRect();
+              const viewportHeight = window.innerHeight;
+              if (rect.bottom > viewportHeight - 160) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              }
             }
           }
-        });
-      }
+        }
+      });
 
       // Emergency snapshot in localStorage (crash-proofing)
       if (currentDocIdRef.current) {
@@ -436,16 +442,16 @@ export const LiteriaEditor: React.FC = () => {
         wordCount={stats.words}
       />
 
-      {/* Writing Canvas */}
+      {/* Writing Canvas - Pure block container for natural dynamic vertical expansion */}
       <div
         data-focus-depth={focusDepth}
         data-writing-mode={settings.appearance.writingMode || 'paper'}
-        className={`flex-1 overflow-y-auto px-3 sm:px-8 md:px-12 py-4 sm:py-8 flex justify-center items-start custom-scrollbar ${
+        className={`flex-1 overflow-y-auto px-3 sm:px-8 md:px-12 py-4 sm:py-8 custom-scrollbar block ${
           typewriterMode ? 'typewriter-canvas' : ''
         }`}
       >
         <main
-          className={`w-full ${currentWidthClass} mx-auto flex flex-col min-h-[calc(100vh-8rem)] h-auto writing-sheet transition-all duration-200`}
+          className={`w-full ${currentWidthClass} mx-auto block min-h-[calc(100vh-8rem)] h-auto writing-sheet transition-colors duration-200`}
           style={{
             fontSize: `${settings.appearance.largerText ? settings.appearance.fontSize + 2 : settings.appearance.fontSize}px`,
             lineHeight: settings.appearance.increasedLineHeight ? settings.appearance.lineHeight + 0.2 : settings.appearance.lineHeight,
@@ -512,7 +518,7 @@ export const LiteriaEditor: React.FC = () => {
           </div>
 
           {/* TipTap Rich Text Area */}
-          <div className="flex-1 cursor-text pb-32 writing-sheet-content">
+          <div className="cursor-text pb-40 writing-sheet-content">
             <EditorContent editor={editor} />
           </div>
         </main>

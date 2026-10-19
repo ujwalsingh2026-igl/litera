@@ -243,10 +243,11 @@
 
 /* Writing Modes & Dynamic Paper Sheet Expansion */
 .writing-sheet {
-  min-height: calc(100vh - 10rem);
+  min-height: calc(100vh - 8rem);
   height: auto !important;
   overflow: visible !important;
   box-sizing: border-box;
+  display: block !important;
 }
 
 [data-writing-mode='paper'] .writing-sheet {
@@ -254,13 +255,19 @@
   color: var(--color-text-primary);
   border: 1px solid var(--color-border);
   box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
-  border-radius: 12px;
-  padding: 2.5rem 2rem;
+  border-radius: 1rem;
+  padding: 2rem 1.5rem;
 }
 
 @media (min-width: 640px) {
   [data-writing-mode='paper'] .writing-sheet {
-    padding: 3.5rem 3.5rem;
+    padding: 3rem 2.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  [data-writing-mode='paper'] .writing-sheet {
+    padding: 4rem 3.5rem;
   }
 }
 
