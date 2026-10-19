@@ -440,12 +440,12 @@ export const LiteriaEditor: React.FC = () => {
       <div
         data-focus-depth={focusDepth}
         data-writing-mode={settings.appearance.writingMode || 'paper'}
-        className={`flex-1 overflow-y-auto px-3 sm:px-8 md:px-12 py-4 sm:py-8 flex justify-center custom-scrollbar ${
+        className={`flex-1 overflow-y-auto px-3 sm:px-8 md:px-12 py-4 sm:py-8 flex justify-center items-start custom-scrollbar ${
           typewriterMode ? 'typewriter-canvas' : ''
         }`}
       >
         <main
-          className={`w-full ${currentWidthClass} flex flex-col min-h-[calc(100vh-10rem)] h-auto writing-sheet overflow-visible transition-all duration-200`}
+          className={`w-full ${currentWidthClass} mx-auto flex flex-col min-h-[calc(100vh-8rem)] h-auto writing-sheet transition-all duration-200`}
           style={{
             fontSize: `${settings.appearance.largerText ? settings.appearance.fontSize + 2 : settings.appearance.fontSize}px`,
             lineHeight: settings.appearance.increasedLineHeight ? settings.appearance.lineHeight + 0.2 : settings.appearance.lineHeight,
@@ -512,7 +512,7 @@ export const LiteriaEditor: React.FC = () => {
           </div>
 
           {/* TipTap Rich Text Area */}
-          <div className="flex-1 cursor-text pb-28">
+          <div className="flex-1 cursor-text pb-32 writing-sheet-content">
             <EditorContent editor={editor} />
           </div>
         </main>
