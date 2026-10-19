@@ -11,6 +11,7 @@ import {
   RefreshCw,
   PlusCircle,
   Key,
+  AlertCircle,
 } from 'lucide-react';
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
@@ -32,14 +33,37 @@ export const AIPlaceholder: React.FC = () => {
   const [showKeyInput, setShowKeyInput] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [testingKey, setTestingKey] = useState(false);
+  const [testResult, setTestResult] = useState<{ valid?: boolean; message?: string } | null>(null);
 
   useEffect(() => {
     setApiKey(aiService.getStoredApiKey());
   }, []);
 
+  const handleTestAndSaveKey = async () => {
+    if (!apiKey.trim()) {
+      aiService.setStoredApiKey('');
+      setTestResult({ valid: false, message: 'API key cleared. System is now using the offline creative engine.' });
+      return;
+    }
+    setTestingKey(true);
+    setTestResult(null);
+    try {
+      const res = await aiService.validateApiKey(apiKey.trim());
+      setTestResult(res);
+      if (res.valid) {
+        aiService.setStoredApiKey(apiKey.trim());
+      }
+    } finally {
+      setTestingKey(false);
+    }
+  };
+
   const handleSaveApiKey = (keyVal: string) => {
     setApiKey(keyVal);
     aiService.setStoredApiKey(keyVal);
+    setTestResult({ valid: true, message: 'API key saved!' });
+    setTimeout(() => setShowKeyInput(false), 1500);
   };
 
   const [messages, setMessages] = useState<Message[]>([
@@ -131,23 +155,56 @@ export const AIPlaceholder: React.FC = () => {
 
       {/* API Key Input Drawer */}
       {showKeyInput && (
-        <div className="p-3 rounded-xl bg-stone-800/80 border border-stone-700 text-xs space-y-2 animate-in fade-in">
-          <div className="flex justify-between text-stone-300">
-            <span className="font-semibold">Optional Gemini / OpenAI API Key</span>
-            <span className="text-stone-400 text-[11px]">Leave empty to use built-in Smart Literary Engine</span>
+        <div className="p-3.5 rounded-xl bg-stone-800/90 border border-stone-700 text-xs space-y-2.5 animate-in fade-in">
+          <div className="flex justify-between items-center text-stone-300">
+            <span className="font-semibold text-stone-100">Google Gemini API Key</span>
+            <a
+              href="https://aistudio.google.com/app/apikey"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[11px] text-amber-400 hover:underline"
+            >
+              Get Free Key from AI Studio ↗
+            </a>
           </div>
+          <p className="text-stone-400 text-[11px]">
+            Supports Gemini 2.0 Flash, 1.5 Flash, and 1.5 Pro. Leave empty to use the built-in offline creative engine.
+          </p>
           <div className="flex gap-2">
             <input
               type="password"
               value={apiKey}
-              onChange={(e) => handleSaveApiKey(e.target.value)}
-              placeholder="AIzaSy... or sk-..."
-              className="flex-1 px-3 py-1.5 bg-stone-900 border border-stone-700 rounded-lg text-xs text-stone-100 outline-none"
+              onChange={(e) => {
+                setApiKey(e.target.value);
+                setTestResult(null);
+              }}
+              placeholder="AIzaSy..."
+              className="flex-1 px-3 py-1.5 bg-stone-900 border border-stone-700 rounded-lg text-xs text-stone-100 outline-none font-mono"
             />
-            <Button size="sm" variant="secondary" onClick={() => setShowKeyInput(false)}>
-              Save Key
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleTestAndSaveKey}
+              disabled={testingKey}
+            >
+              {testingKey ? 'Testing...' : 'Test & Save'}
+            </Button>
+            <Button size="sm" variant="primary" onClick={() => handleSaveApiKey(apiKey)}>
+              Save
             </Button>
           </div>
+          {testResult && (
+            <div
+              className={`p-2 rounded-lg text-[11px] font-medium flex items-center gap-1.5 ${
+                testResult.valid
+                  ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800'
+                  : 'bg-rose-950/60 text-rose-300 border border-rose-800'
+              }`}
+            >
+              {testResult.valid ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <AlertCircle className="w-3.5 h-3.5 text-rose-400" />}
+              <span>{testResult.message}</span>
+            </div>
+          )}
         </div>
       )}
 

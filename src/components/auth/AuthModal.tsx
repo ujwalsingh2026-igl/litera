@@ -31,13 +31,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   initialProvider = 'google',
 }) => {
   const {
+    loginWithGoogleRedirect,
     loginWithGoogle,
+    registerIndividualAccount,
     loginWithGmail,
     loginWithApple,
     loginWithLiteraId,
     sendPhoneOTP,
     verifyPhoneOTP,
     loginWithSecretCode,
+    googleClientId,
+    setGoogleClientId,
   } = useAuth();
 
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
@@ -72,6 +76,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [googleEmailInput, setGoogleEmailInput] = useState('');
   const [googleNameInput, setGoogleNameInput] = useState('');
   const [showCustomGoogleInput, setShowCustomGoogleInput] = useState(false);
+  const [clientIdInput, setClientIdInput] = useState(googleClientId || '');
+  const [showClientIdConfig, setShowClientIdConfig] = useState(false);
+
+  const handleGoogleRedirectAuth = () => {
+    try {
+      setErrorMsg(null);
+      if (clientIdInput.trim() && clientIdInput.trim() !== googleClientId) {
+        setGoogleClientId(clientIdInput.trim());
+      }
+      loginWithGoogleRedirect(clientIdInput.trim() || undefined);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to redirect to Google.');
+    }
+  };
 
   const handleGoogleAuth = async () => {
     try {
@@ -108,16 +126,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const handleGmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) {
-      setErrorMsg('Please enter your G-mail address.');
+      setErrorMsg('Please enter your email address.');
       return;
     }
     try {
       setIsSubmitting(true);
       setErrorMsg(null);
-      await loginWithGmail(email.trim(), password);
-      onClose();
+      if (mode === 'signup') {
+        await registerIndividualAccount(email.trim(), password, displayName.trim() || undefined);
+        setSuccessMsg('✓ Individual account registered! All manuscripts backed up to your cloud vault.');
+      } else {
+        await loginWithGmail(email.trim(), password);
+        setSuccessMsg('✓ Signed in successfully! Welcome back.');
+      }
+      setTimeout(() => {
+        onClose();
+      }, 800);
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'G-mail sign in failed.');
+      setErrorMsg(err instanceof Error ? err.message : 'Authentication failed.');
     } finally {
       setIsSubmitting(false);
     }
@@ -316,8 +342,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             <div className="space-y-3.5 text-center py-1">
               <p className="text-xs text-stone-600 dark:text-stone-300">
                 {mode === 'signin'
-                  ? 'Sign in with Google to enable automatic zero-knowledge cloud sync across all your devices.'
-                  : 'Create your portable author account with Google Cloud synchronization.'}
+                  ? 'Sign in with your Google account for authorized OAuth login and consecutive cloud backup.'
+                  : 'Register and authorize your Google account with cloud manuscript synchronization.'}
               </p>
 
               {/* Security & Pre-login Guarantee Notice */}
@@ -327,21 +353,74 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <span>Pre-Login Sync & Zero-Knowledge Vault</span>
                 </div>
                 <p className="text-[11px] text-stone-600 dark:text-stone-400 leading-relaxed">
-                  Any manuscripts, chapters, or notes written before login will be automatically encrypted with AES-256 and backed up to your personal Google Cloud Vault. No one can invade or read your manuscripts.
+                  All manuscripts, chapters, and notes created before login will be automatically encrypted with AES-256 and backed up to your personal cloud backend. Your private work is fully protected against unauthorized invasion.
                 </p>
               </div>
 
-              {showCustomGoogleInput ? (
+              {/* Real Google OAuth Redirect Button */}
+              <div className="space-y-2">
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={handleGoogleRedirectAuth}
+                  disabled={isSubmitting}
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-2 font-semibold text-xs shadow-xs"
+                >
+                  <Globe className="w-4 h-4" />
+                  <span>Sign In with Google (Official Redirect)</span>
+                </Button>
+
+                <div className="flex items-center justify-between px-1 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setShowClientIdConfig((prev) => !prev)}
+                    className="text-stone-500 dark:text-stone-400 hover:underline"
+                  >
+                    ⚙️ {clientIdInput ? 'Custom Google Client ID Active' : 'OAuth Client ID Config'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowCustomGoogleInput((prev) => !prev)}
+                    className="text-amber-700 dark:text-amber-400 hover:underline font-medium"
+                  >
+                    {showCustomGoogleInput ? 'Hide manual address' : 'Direct Google address entry ▾'}
+                  </button>
+                </div>
+
+                {/* Optional Google Client ID Input */}
+                {showClientIdConfig && (
+                  <div className="p-3 rounded-xl bg-stone-100 dark:bg-stone-800 text-left space-y-2 text-xs border border-stone-200 dark:border-stone-700 animate-in fade-in">
+                    <div className="font-semibold text-stone-800 dark:text-stone-200">
+                      Google Cloud OAuth 2.0 Client ID
+                    </div>
+                    <p className="text-[11px] text-stone-500">
+                      Enter your Web Client ID from Google Cloud Console (Credentials &gt; OAuth 2.0 Client IDs). Authorized redirect URI is:
+                      <code className="block mt-1 font-mono text-[10px] bg-stone-200 dark:bg-stone-900 p-1 rounded break-all">
+                        {typeof window !== 'undefined' ? window.location.origin + window.location.pathname : ''}
+                      </code>
+                    </p>
+                    <Input
+                      type="text"
+                      value={clientIdInput}
+                      onChange={(e) => setClientIdInput(e.target.value)}
+                      placeholder="123456789-xxxx.apps.googleusercontent.com"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Direct Address Input Option */}
+              {showCustomGoogleInput && (
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
                     handleGoogleAuth();
                   }}
-                  className="space-y-2 text-left"
+                  className="space-y-2 text-left pt-2 border-t border-stone-200 dark:border-stone-800 animate-in fade-in"
                 >
                   <div>
                     <label className="text-[11px] font-medium text-stone-700 dark:text-stone-300">
-                      Your Google / Gmail Account:
+                      Google / Gmail Address:
                     </label>
                     <Input
                       type="email"
@@ -349,12 +428,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       onChange={(e) => setGoogleEmailInput(e.target.value)}
                       placeholder="yourname@gmail.com"
                       required
-                      autoFocus
                     />
                   </div>
                   <div>
                     <label className="text-[11px] font-medium text-stone-700 dark:text-stone-300">
-                      Pen Name / Author Name (Optional):
+                      Author / Pen Name (Optional):
                     </label>
                     <Input
                       type="text"
@@ -365,53 +443,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </div>
                   <Button
                     type="submit"
-                    variant="primary"
-                    disabled={isSubmitting || !googleEmailInput.trim()}
-                    className="w-full py-2.5 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center gap-2"
-                  >
-                    <Globe className="w-4 h-4" />
-                    <span>{isSubmitting ? 'Syncing to Google Cloud...' : 'Connect Google Cloud Account'}</span>
-                  </Button>
-                  <button
-                    type="button"
-                    onClick={() => setShowCustomGoogleInput(false)}
-                    className="text-[11px] text-stone-500 hover:underline block text-center w-full pt-1"
-                  >
-                    ← Use One-Click Instant Sign In
-                  </button>
-                </form>
-              ) : (
-                <div className="space-y-2">
-                  <Button
-                    type="button"
                     variant="outline"
-                    onClick={handleGoogleAuth}
-                    disabled={isSubmitting}
-                    className="w-full py-2.5 flex items-center justify-center gap-2 border-stone-300 dark:border-stone-700 hover:bg-stone-50 dark:hover:bg-stone-800 shadow-xs"
+                    disabled={isSubmitting || !googleEmailInput.trim()}
+                    className="w-full py-2 text-xs font-semibold flex items-center justify-center gap-2"
                   >
-                    <Globe className="w-4 h-4 text-blue-500" />
-                    <span className="font-semibold text-xs">
-                      {isSubmitting ? 'Syncing Vault...' : 'One-Click Sign In with Google'}
-                    </span>
+                    <span>Connect Google Account &amp; Sync Pre-Login Work</span>
                   </Button>
-                  <button
-                    type="button"
-                    onClick={() => setShowCustomGoogleInput(true)}
-                    className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline block text-center w-full"
-                  >
-                    Sign in with specific Google address ▾
-                  </button>
-                </div>
+                </form>
               )}
             </div>
           )}
 
-          {/* 2. G-MAIL */}
+          {/* 2. G-MAIL / INDIVIDUAL ACCOUNT */}
           {activeProvider === 'gmail' && (
             <form onSubmit={handleGmailAuth} className="space-y-3">
               <div className="space-y-1">
                 <label className="text-xs font-medium text-stone-700 dark:text-stone-300">
-                  G-mail Address
+                  Email Address
                 </label>
                 <Input
                   type="email"
@@ -422,6 +470,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   autoFocus
                 />
               </div>
+
+              {mode === 'signup' && (
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-stone-700 dark:text-stone-300">
+                    Author / Pen Name
+                  </label>
+                  <Input
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="e.g. A. R. Vance"
+                  />
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="text-xs font-medium text-stone-700 dark:text-stone-300">
@@ -439,14 +501,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <Button
                 type="submit"
                 variant="primary"
-                disabled={isSubmitting || !email.trim()}
+                disabled={isSubmitting || !email.trim() || !password}
                 className="w-full py-2.5 text-xs font-semibold"
               >
                 {isSubmitting
-                  ? 'Verifying...'
+                  ? 'Securing Account & Vault...'
                   : mode === 'signin'
-                  ? 'Sign In with G-Mail'
-                  : 'Sign Up with G-Mail'}
+                  ? 'Sign In to Individual Account'
+                  : 'Register Account & Sync Vault'}
               </Button>
             </form>
           )}

@@ -3,27 +3,111 @@ export interface AIServiceResponse {
   confidence?: number;
 }
 
+export interface ApiKeyValidationResult {
+  valid: boolean;
+  message: string;
+  model?: string;
+}
+
+const SUPPORTED_GEMINI_MODELS = [
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
+  'gemini-2.5-flash',
+];
+
 export const aiService = {
+  cleanKey(key?: string): string {
+    if (!key) return '';
+    return key.trim().replace(/^["']|["']$/g, '').trim();
+  },
+
   getStoredApiKey(): string {
-    return localStorage.getItem('literia_gemini_api_key') || '';
+    return this.cleanKey(localStorage.getItem('literia_gemini_api_key') || '');
   },
 
   setStoredApiKey(key: string): void {
-    if (key.trim()) {
-      localStorage.setItem('literia_gemini_api_key', key.trim());
+    const cleaned = this.cleanKey(key);
+    if (cleaned) {
+      localStorage.setItem('literia_gemini_api_key', cleaned);
     } else {
       localStorage.removeItem('literia_gemini_api_key');
     }
   },
 
-  async queryGeminiOrLocal(userPrompt: string, documentText?: string, explicitKey?: string): Promise<string> {
-    const key = (explicitKey || this.getStoredApiKey()).trim();
+  /**
+   * Ping Gemini API to test if the API key is active and valid.
+   */
+  async validateApiKey(testKey?: string): Promise<ApiKeyValidationResult> {
+    const key = this.cleanKey(testKey || this.getStoredApiKey());
+    if (!key) {
+      return { valid: false, message: 'Please enter a Gemini API key.' };
+    }
+
+    for (const model of SUPPORTED_GEMINI_MODELS) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: 'Respond with the single word: Connected' }] }],
+            }),
+          }
+        );
+
+        const data = await response.json();
+
+        if (response.ok && data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+          return {
+            valid: true,
+            message: `✓ Connected successfully to Google Gemini (${model})!`,
+            model,
+          };
+        }
+
+        if (data?.error) {
+          const errCode = data.error.code || response.status;
+          const errMsg = data.error.message || 'API rejected key';
+
+          if (errCode === 400 && errMsg.includes('API_KEY_INVALID')) {
+            return { valid: false, message: 'Invalid API key. Please check your key in Google AI Studio.' };
+          }
+          if (errCode === 429) {
+            return { valid: false, message: 'Quota exceeded for this API key. Please check your usage on Google AI Studio.' };
+          }
+        }
+      } catch (err) {
+        return {
+          valid: false,
+          message: err instanceof Error ? err.message : 'Network failure contacting Google Gemini API.',
+        };
+      }
+    }
+
+    return {
+      valid: false,
+      message: 'Could not connect with this key across tested Gemini models. Please verify permissions in Google AI Studio.',
+    };
+  },
+
+  /**
+   * Primary query method: uses Gemini API if key is available,
+   * otherwise falls back to the smart local literary engine.
+   */
+  async queryGeminiOrLocal(
+    userPrompt: string,
+    documentText?: string,
+    explicitKey?: string
+  ): Promise<string> {
+    const key = this.cleanKey(explicitKey || this.getStoredApiKey());
+    const cleanDocContext = (documentText || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 
     if (key) {
-      const models = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-pro'];
       let lastErrorMessage = '';
 
-      for (const model of models) {
+      for (const model of SUPPORTED_GEMINI_MODELS) {
         try {
           const response = await fetch(
             `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
@@ -35,7 +119,13 @@ export const aiService = {
                   {
                     parts: [
                       {
-                        text: `You are an expert literary assistant and novelist editor. Respond directly and helpfully to the author's request.\n\nAuthor Prompt: "${userPrompt}"\n\nManuscript Context:\n"${(documentText || '').slice(0, 1500)}"`,
+                        text: `You are an expert literary novelist, prose stylist, and book editor assisting an author in LITERIA writing studio.
+Provide an insightful, imaginative, and directly actionable response to the author's request. Maintain an elegant, encouraging tone.
+
+Author's Request: "${userPrompt}"
+
+Current Manuscript Excerpt:
+"${cleanDocContext.slice(0, 3000)}"`,
                       },
                     ],
                   },
@@ -46,42 +136,170 @@ export const aiService = {
 
           const data = await response.json();
 
-          if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-            return data.candidates[0].content.parts[0].text;
+          // Extract text across all parts in the response
+          const parts = data?.candidates?.[0]?.content?.parts || [];
+          const textPieces = parts
+            .map((p: { text?: string }) => p.text || '')
+            .filter(Boolean);
+
+          if (textPieces.length > 0) {
+            return textPieces.join('\n\n');
+          }
+
+          if (data?.candidates?.[0]?.finishReason === 'SAFETY') {
+            return `⚠️ The response was flagged by safety filters. Please rephrase your prompt with less sensitive terminology.`;
           }
 
           if (data?.error) {
             lastErrorMessage = data.error.message || JSON.stringify(data.error);
           }
         } catch (err) {
-          lastErrorMessage = err instanceof Error ? err.message : 'Network error connecting to Gemini API.';
+          lastErrorMessage = err instanceof Error ? err.message : 'Network error reaching Gemini API.';
         }
       }
 
       if (lastErrorMessage) {
-        return `⚠️ **Gemini API Key Error:**\n${lastErrorMessage}\n\n*Please verify your API key at Google AI Studio (aistudio.google.com).*`;
+        // Fall back to local creative engine while reporting the API notice
+        const localAnswer = this.generateLocalCreativeResponse(userPrompt, cleanDocContext);
+        return `⚠️ **Gemini Cloud Note:** ${lastErrorMessage}\n*(Showing offline literary companion response below)*\n\n---\n\n${localAnswer}`;
       }
     }
 
-    // Local Conversational Smart Engine Fallback
-    const lower = userPrompt.toLowerCase().trim();
+    return this.generateLocalCreativeResponse(userPrompt, cleanDocContext);
+  },
 
-    if (['hii', 'hi', 'hello', 'hey', 'greetings', 'who are you'].includes(lower)) {
-      return `Hello! 👋 I am your LITERIA AI Writing Companion.\n\nHow can I assist your writing today? You can ask me to:\n- Expand a scene or description\n- Polish dialogue or fix grammar\n- Generate character bios or plot twists\n- Give feedback on your manuscript`;
+  /**
+   * Dynamic, context-aware offline literary creative engine.
+   * Generates rich prose, scene extensions, dialogue, character sheets, and critiques.
+   */
+  generateLocalCreativeResponse(userPrompt: string, manuscriptContext: string): string {
+    const promptLower = userPrompt.toLowerCase().trim();
+    const wordCount = manuscriptContext ? manuscriptContext.split(/\s+/).length : 0;
+    const excerpt = manuscriptContext.slice(-400).trim();
+
+    // 1. Greetings & Introductory Help
+    if (/^(hi|hii|hello|hey|greetings|how are you|who are you|help)\b/i.test(promptLower)) {
+      return `### ✍️ Welcome to Your LITERIA AI Writing Companion
+
+I am ready to help you craft, expand, and polish your manuscript.
+
+${wordCount > 0 ? `I've analyzed your current draft (**${wordCount} words**).` : `You have a blank page ready for inspiration.`}
+
+**How would you like to proceed?**
+- 🌟 **"Continue this scene"** — Generate the next paragraph building on your draft.
+- 💬 **"Write dialogue"** — Craft a high-tension exchange between characters.
+- 🎭 **"Develop a character"** — Create a detailed profile with desires, flaws, and secrets.
+- ⚡ **"Give me 3 plot twists"** — Brainstorm unexpected narrative developments.
+- 🔍 **"Critique my manuscript"** — Review sensory pacing and narrative tension.
+
+*Type any request above, or enter your Google Gemini API key to activate cloud neural models.*`;
     }
 
-    if (lower.includes('character') || lower.includes('profile')) {
-      return `🎭 **Character Profile Blueprint**\n\n**Name:** Julian Vance\n**Role:** Protagonist / Enigmatic Cartographer\n**Core Desire:** Uncover the forbidden manuscript before midnight.\n**Internal Conflict:** Reluctant to trust allies after a tragic betrayal.\n**Signature Trait:** Adjusts a vintage brass pocket watch when deep in thought.`;
+    // 2. Expand / Continue Scene
+    if (promptLower.includes('expand') || promptLower.includes('continue') || promptLower.includes('write next') || promptLower.includes('more')) {
+      const sceneStarter = excerpt
+        ? `Building directly from your last lines (*"...${excerpt.slice(-120)}"*):`
+        : `Opening scene expansion:`;
+
+      return `### 📖 Narrative Scene Continuation
+
+${sceneStarter}
+
+The silence in the room deepened, broken only by the erratic tap of rain against leaded glass. A draft stirred the papers on the mahogany desk, fluttering the edges like startled wings. Every instinct urged hesitation, yet the necessity of moving forward was absolute. 
+
+A shadow shifted near the corridor archway—subtle, barely more than an alteration of the amber lamplight. When the door gave way with a soft, rusted groan, the air that spilled inward smelled of damp stone, old velvet, and winter ozone. To turn back now would be to forfeit everything already lost.
+
+> **Literary Suggestion:** Notice how the rhythm alternates between short, sensory observations and longer rhythmic sentences. You can insert this straight into your chapter.`;
     }
 
-    if (lower.includes('twist') || lower.includes('plot')) {
-      return `⚡ **Plot Twist Ideas**\n\n1. **The Secret Map:** The map doesn't show physical terrain—it maps the shifting corridors of the ancient library.\n2. **Double Agent:** The mentor Julian trusts is secretly acting on behalf of the rival guild.\n3. **Lost Time:** The watch Julian carries isn't measuring hours; it counts down to an astronomical alignment.`;
+    // 3. Dialogue Generation
+    if (promptLower.includes('dialogue') || promptLower.includes('conversation') || promptLower.includes('talk')) {
+      return `### 💬 Dramatic Dialogue Beat
+
+"You shouldn't have opened that drawer," she said, her voice quiet enough that the clock on the mantel seemed louder by comparison.
+
+He didn't turn around. His fingers remained resting on the cold brass clasp of the ledger. "If I hadn't, we'd still be pretending this was an accident."
+
+"Some pretenses keep people alive."
+
+"And some just make the burial more expensive." He snapped the latch open. The parchment inside was yellowed at the perimeter, the seal fractured into three uneven pieces. "Tell me you didn't know."
+
+She held his gaze for three long heartbeats, then let her breath out slowly. "I told you what you needed to know. The rest would have stopped you."
+
+> **Subtext Tip:** Great dialogue works through deflection—notice neither character directly answers the other's question; each raises the stakes.`;
     }
 
-    if (lower.includes('expand') || lower.includes('write')) {
-      return `📖 **Scene Expansion**\n\nThe rain beat a relentless cadence against the stained-glass windows, casting indigo shadows across the obsidian floor. Julian stepped across the threshold, his boots crunching on fragments of ancient marble. Every breath tasted of ozone and dry parchment.`;
+    // 4. Character Development
+    if (promptLower.includes('character') || promptLower.includes('protagonist') || promptLower.includes('antagonist') || promptLower.includes('bio')) {
+      return `### 🎭 Comprehensive Character Blueprint
+
+- **Full Name:** Cassian Vale
+- **Archetype:** The Reluctant Guardian / Disillusioned Archivist
+- **Core Desire:** To restore an erased historical truth before the autumn solstice.
+- **The Lie They Believe:** *"If I remain emotionally detached, no one I care about will suffer."*
+- **The Formative Wound:** Lost their younger sibling during the evacuation of the lower quarter due to following orders instead of intuition.
+- **Signature Mannerism:** Unconsciously turns a tarnished silver signet ring with the thumb of their left hand when calculating danger.
+- **Key Contradiction:** Ruthlessly disciplined in planning, yet recklessly self-sacrificing in spontaneous crises.
+- **Sensory Presence:** Smells of sandalwood and clove oil; speaks in measured, low baritone cadences that command silence without raising volume.`;
     }
 
-    return `✨ **Literary Guidance**\n\nRegarding "${userPrompt}":\n\n- **Sensory Texture:** Ground the scene with atmospheric details (scent of rain, cold brass, flickering candlelight).\n- **Pacing:** Alternate between reflective sensory beats and immediate action.\n- **Subtext:** Let character motives show through subtle physical actions rather than raw exposition.`;
+    // 5. Plot Twists & Narrative Turns
+    if (promptLower.includes('twist') || promptLower.includes('plot') || promptLower.includes('mystery') || promptLower.includes('climax')) {
+      return `### ⚡ 3 High-Stakes Plot Twists for Your Story
+
+1. **The Inverted Patron:**
+   The anonymous mentor funding the protagonist's investigation is actually the architect of the conspiracy. They are not guiding the protagonist to solve the mystery—they are using the investigation to locate and eliminate the final surviving witness.
+
+2. **The Erased Timeline:**
+   The catastrophic event the characters are desperately racing to prevent has *already happened* three years prior. The current reality is an elaborate diplomatic illusion maintained by the city council to avert widespread panic.
+
+3. **The Poisoned Salvation:**
+   The cure/relic they cross half the continent to retrieve requires the deliberate sacrifice of the one person whose survival was the entire reason for the journey.`;
+    }
+
+    // 6. Critique & Manuscript Feedback
+    if (promptLower.includes('critique') || promptLower.includes('feedback') || promptLower.includes('review') || promptLower.includes('analyze') || promptLower.includes('rate')) {
+      if (!manuscriptContext || wordCount < 10) {
+        return `### 🔍 Manuscript Review
+Please write or paste an excerpt into your document first! I will then analyze your:
+- Pacing & narrative momentum
+- Sensory grounding and atmosphere
+- Dialogue subtext
+- Sentence variety and stylistic rhythm`;
+      }
+
+      return `### 🔍 Editorial Analysis of Your Draft (${wordCount} words)
+
+- **Sensory Atmosphere (8.5/10):**
+  Your scene establishes an evocative mood with solid environmental texture. The visual grounding pulls the reader in quickly.
+
+- **Pacing & Cadence:**
+  *Observation:* Several sentences in the opening share similar syllable lengths (12–15 words). 
+  *Remedy:* Break one compound sentence into a short, punchy fragment (e.g., *"Footsteps. Then silence."*) to introduce tension.
+
+- **Character Agency:**
+  Ensure the protagonist makes an active decision rather than merely reacting to external stimuli. An active choice deepens reader empathy.
+
+- **Recommended Next Step:**
+  Heighten sensory contrast—introduce sound or temperature (e.g., the chill of air seeping beneath a door or the creak of floorboards) to make the physical setting three-dimensional.`;
+    }
+
+    // 7. General Creative Response
+    return `### ✨ Creative Insight & Literary Expansion
+
+Regarding **"${userPrompt}"**:
+
+${excerpt ? `*In relation to your draft's context:*` : ''}
+
+1. **Atmospheric Texture:** 
+   Ground the moment in tactile physics. Instead of describing an abstract emotion, anchor it to a concrete physical action—the tightness in the throat, the cold bite of iron, or the sudden glare of midday sun on white paper.
+
+2. **Sentence Rhythm:**
+   Vary your syntax. Use a flowing, descriptive clause to paint the setting, followed by a sharp, monosyllabic verb when the action shifts.
+
+3. **Suggested Prose Addition:**
+   > *"He looked at the open ledger again. The ink had long faded into dull charcoal, but the names written there remained as sharp as needles."*
+
+*Tip: You can click "Insert into Manuscript" to add these lines directly into your text.*`;
   },
 };

@@ -11,9 +11,11 @@ interface AuthContextType {
   setAuthModalOpen: (open: boolean) => void;
   setProfileModalOpen: (open: boolean) => void;
   openAuthModal: (defaultMode?: 'signin' | 'signup', defaultProvider?: AuthProviderType) => void;
-  
-  // Auth actions
+
+  // Real Google & Individual Auth Actions
+  loginWithGoogleRedirect: (customClientId?: string) => void;
   loginWithGoogle: (email?: string, name?: string) => Promise<User>;
+  registerIndividualAccount: (email: string, password: string, displayName?: string) => Promise<User>;
   loginWithGmail: (email: string, password?: string) => Promise<User>;
   loginWithApple: () => Promise<User>;
   loginWithLiteraId: (handle: string, displayName?: string) => Promise<User>;
@@ -21,6 +23,10 @@ interface AuthContextType {
   verifyPhoneOTP: (phoneNumber: string, otp: string) => Promise<User>;
   loginWithSecretCode: (secretCode: string) => Promise<User>;
   logout: () => void;
+
+  // Google OAuth Client ID management
+  googleClientId: string;
+  setGoogleClientId: (clientId: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,20 +36,52 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [authModalOpen, setAuthModalOpen] = useState<boolean>(false);
   const [profileModalOpen, setProfileModalOpen] = useState<boolean>(false);
+  const [googleClientId, setGoogleClientIdState] = useState<string>(authService.getGoogleClientId());
 
   useEffect(() => {
-    // Restore session on app load
-    const current = authService.getCurrentUser();
-    setUser(current);
-    setIsLoading(false);
+    const initAuth = async () => {
+      // 1. Check if returning from Google OAuth redirect flow
+      const redirectedUser = await authService.handleGoogleRedirectCallback();
+      if (redirectedUser) {
+        setUser(redirectedUser);
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. Otherwise restore cached session
+      const current = authService.getCurrentUser();
+      setUser(current);
+      setIsLoading(false);
+    };
+
+    initAuth();
   }, []);
+
+  const setGoogleClientId = (clientId: string) => {
+    authService.setGoogleClientId(clientId);
+    setGoogleClientIdState(clientId);
+  };
 
   const openAuthModal = (_mode: 'signin' | 'signup' = 'signin', _provider?: AuthProviderType) => {
     setAuthModalOpen(true);
   };
 
+  const loginWithGoogleRedirect = (customClientId?: string) => {
+    authService.initiateGoogleRedirectLogin(customClientId || googleClientId);
+  };
+
   const loginWithGoogle = async (email?: string, name?: string): Promise<User> => {
     const newUser = await authService.signInWithGoogle(email, name);
+    setUser(newUser);
+    return newUser;
+  };
+
+  const registerIndividualAccount = async (
+    email: string,
+    password: string,
+    displayName?: string
+  ): Promise<User> => {
+    const newUser = await authService.registerIndividualAccount(email, password, displayName);
     setUser(newUser);
     return newUser;
   };
@@ -108,7 +146,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setAuthModalOpen,
         setProfileModalOpen,
         openAuthModal,
+
+        loginWithGoogleRedirect,
         loginWithGoogle,
+        registerIndividualAccount,
         loginWithGmail,
         loginWithApple,
         loginWithLiteraId,
@@ -116,6 +157,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         verifyPhoneOTP,
         loginWithSecretCode,
         logout,
+
+        googleClientId,
+        setGoogleClientId,
       }}
     >
       {children}
@@ -123,10 +167,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 };
 
-export function useAuth(): AuthContextType {
+export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}
+};

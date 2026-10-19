@@ -12,6 +12,7 @@ import {
   BookOpen,
   MessageSquare,
   Zap,
+  AlertCircle,
 } from 'lucide-react';
 import { aiService } from '../../services/aiService';
 import { documentService } from '../../services/documentService';
@@ -30,13 +31,32 @@ export const GlobalAiModal: React.FC<GlobalAiModalProps> = ({ isOpen, onClose })
   const [copied, setCopied] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(aiService.getStoredApiKey());
   const [showKeyConfig, setShowKeyConfig] = useState(false);
-  const [keySavedNotice, setKeySavedNotice] = useState(false);
+  const [testingKey, setTestingKey] = useState(false);
+  const [testResult, setTestResult] = useState<{ valid?: boolean; message?: string } | null>(null);
+
+  const handleTestAndSaveKey = async () => {
+    if (!apiKeyInput.trim()) {
+      aiService.setStoredApiKey('');
+      setTestResult({ valid: false, message: 'API key cleared. System is now using the offline creative engine.' });
+      return;
+    }
+    setTestingKey(true);
+    setTestResult(null);
+    try {
+      const res = await aiService.validateApiKey(apiKeyInput.trim());
+      setTestResult(res);
+      if (res.valid) {
+        aiService.setStoredApiKey(apiKeyInput.trim());
+      }
+    } finally {
+      setTestingKey(false);
+    }
+  };
 
   const handleSaveApiKey = () => {
     aiService.setStoredApiKey(apiKeyInput);
-    setKeySavedNotice(true);
-    setTimeout(() => setKeySavedNotice(false), 2000);
-    setShowKeyConfig(false);
+    setTestResult({ valid: true, message: 'API key saved!' });
+    setTimeout(() => setShowKeyConfig(false), 1500);
   };
 
   const handleRunPrompt = async (queryText?: string) => {
@@ -86,27 +106,55 @@ export const GlobalAiModal: React.FC<GlobalAiModalProps> = ({ isOpen, onClose })
         {/* API Key Config Box */}
         {showKeyConfig && (
           <div className="p-3.5 rounded-xl bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 space-y-2 text-xs animate-in fade-in">
-            <div className="font-semibold text-stone-800 dark:text-stone-200">
-              Set Google Gemini API Key
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-stone-800 dark:text-stone-200">
+                Google Gemini API Key
+              </span>
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[10px] text-amber-600 dark:text-amber-400 hover:underline"
+              >
+                Get Free Key from AI Studio ↗
+              </a>
             </div>
             <p className="text-stone-500 text-[11px]">
-              Optional. Enter your free Gemini API key from AI Studio to enable cloud model generation.
+              Supports Gemini 2.0 Flash, 1.5 Flash, and 1.5 Pro. Leave blank to use the built-in offline creative engine.
             </p>
             <div className="flex gap-2">
               <input
                 type="password"
                 value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
+                onChange={(e) => {
+                  setApiKeyInput(e.target.value);
+                  setTestResult(null);
+                }}
                 placeholder="AIzaSy..."
                 className="flex-1 px-3 py-1.5 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded-lg outline-none font-mono text-xs"
               />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleTestAndSaveKey}
+                disabled={testingKey}
+              >
+                {testingKey ? 'Testing...' : 'Test & Save'}
+              </Button>
               <Button variant="primary" size="sm" onClick={handleSaveApiKey}>
-                Save Key
+                Save
               </Button>
             </div>
-            {keySavedNotice && (
-              <div className="text-emerald-600 dark:text-emerald-400 font-semibold text-[11px]">
-                ✓ API key updated successfully!
+            {testResult && (
+              <div
+                className={`p-2 rounded-lg text-[11px] font-medium flex items-center gap-1.5 ${
+                  testResult.valid
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/40'
+                    : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-900/40'
+                }`}
+              >
+                {testResult.valid ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <AlertCircle className="w-3.5 h-3.5 text-rose-600" />}
+                <span>{testResult.message}</span>
               </div>
             )}
           </div>

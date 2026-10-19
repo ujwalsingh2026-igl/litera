@@ -73,6 +73,25 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
     }
   };
 
+  const handleRestoreCloud = async () => {
+    setIsSyncing(true);
+    setSyncSuccessMessage(null);
+    try {
+      const restored = await googleCloudSyncService.restoreFromGoogleCloud(user);
+      if (restored > 0) {
+        setSyncSuccessMessage(`✓ Successfully restored ${restored} manuscripts from your Google Cloud Vault!`);
+        setTimeout(() => {
+          window.location.reload();
+        }, 1200);
+      } else {
+        setSyncSuccessMessage('No cloud backups found yet for this account. Click "Backup to Cloud Now" to save your first snapshot.');
+        setTimeout(() => setSyncSuccessMessage(null), 4000);
+      }
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleImportSecretVault = async () => {
     if (!importCodeInput.trim()) return;
     const targetCode = importCodeInput.trim().toUpperCase();
@@ -185,17 +204,30 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
 
           <div className="flex items-center justify-between pt-1 text-xs">
             <span className="text-stone-500 font-medium">Google Cloud Vault Sync:</span>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={handleManualSync}
-              disabled={isSyncing}
-              className="text-xs"
-            >
-              <Cloud className="w-3.5 h-3.5 mr-1.5 text-amber-500" />
-              <span>{isSyncing ? 'Syncing...' : 'Sync Vault to Cloud Now'}</span>
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleManualSync}
+                disabled={isSyncing}
+                className="text-xs"
+              >
+                <Cloud className="w-3.5 h-3.5 mr-1.5 text-amber-500" />
+                <span>{isSyncing ? 'Syncing...' : 'Backup Now'}</span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleRestoreCloud}
+                disabled={isSyncing}
+                className="text-xs"
+              >
+                <Download className="w-3.5 h-3.5 mr-1 text-blue-500" />
+                <span>Restore Cloud</span>
+              </Button>
+            </div>
           </div>
 
           {syncSuccessMessage && (
