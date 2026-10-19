@@ -1,7 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../../state';
 import type { Document, Chapter, SignaturePlacement } from '../../types';
 import { Modal, Button, Input } from '../ui';
+import {
+  generateManuscriptPrintHtml,
+  printManuscriptHtml,
+  type PrintManuscriptSection,
+} from '../../utils/printManuscript';
 import {
   Printer,
   FileText,
@@ -12,6 +17,7 @@ import {
   PenTool,
   Globe,
   Sparkles,
+  BookOpen,
 } from 'lucide-react';
 
 interface ExportManuscriptModalProps {
@@ -21,7 +27,9 @@ interface ExportManuscriptModalProps {
   bookTitle?: string;
   bookSubtitle?: string;
   author?: string;
+  genre?: string;
   chapters?: Chapter[];
+  liveContent?: string;
 }
 
 export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
@@ -31,7 +39,9 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
   bookTitle,
   bookSubtitle,
   author = 'Author',
+  genre,
   chapters,
+  liveContent,
 }) => {
   const { settings, updateSettings } = useApp();
   const sig = settings.signature || {
@@ -44,20 +54,56 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
     watermarkText: 'LITERIA MANUSCRIPT DRAFT',
   };
 
-  const title = doc ? doc.title : bookTitle || 'Manuscript';
-  const contentHtml = doc ? doc.content : chapters ? chapters.map((c) => `<h2>${c.title}</h2>${c.content}`).join('<hr/>') : '';
+  const hasMultipleChapters = Boolean(chapters && chapters.length > 1);
+  const [exportScope, setExportScope] = useState<'book' | 'chapter'>(
+    hasMultipleChapters ? 'book' : 'chapter'
+  );
+
+  const effectiveTitle = exportScope === 'book' && bookTitle
+    ? bookTitle
+    : doc?.title || bookTitle || 'Manuscript';
 
   const [copied, setCopied] = useState(false);
   const [exportPlacement, setExportPlacement] = useState<SignaturePlacement>(sig.placement);
   const [watermarkText, setWatermarkText] = useState<string>(sig.watermarkText || 'CONFIDENTIAL DRAFT');
   const [typedName, setTypedName] = useState<string>(sig.typedName || 'Author Signature');
 
+  // Compute sections to export. Uses liveContent (from TipTap) if available so recent typing is never missed!
+  const sectionsToExport: PrintManuscriptSection[] = useMemo(() => {
+    if (exportScope === 'chapter' || !chapters || chapters.length === 0) {
+      return [
+        {
+          title: doc ? doc.title : bookTitle,
+          contentHtml: liveContent !== undefined ? liveContent : doc?.content || '',
+        },
+      ];
+    }
+
+    return chapters.map((ch) => {
+      const isCurrentActive = doc?.chapterId === ch.id;
+      return {
+        title: ch.title,
+        contentHtml: isCurrentActive && liveContent !== undefined ? liveContent : ch.content,
+      };
+    });
+  }, [exportScope, chapters, doc, bookTitle, liveContent]);
+
   const getPlainText = () => {
-    let text = `${title.toUpperCase()}\n`;
+    let text = `${effectiveTitle.toUpperCase()}\n`;
     if (bookSubtitle) text += `${bookSubtitle}\n`;
     text += `By ${author}\n\n`;
     text += `========================================\n\n`;
-    text += contentHtml.replace(/<[^>]+>/g, '\n').replace(/\n\s*\n/g, '\n\n').trim();
+
+    sectionsToExport.forEach((sec, idx) => {
+      if (sectionsToExport.length > 1 && sec.title) {
+        text += `\n${sec.title.toUpperCase()}\n----------------------------------------\n\n`;
+      }
+      text += (sec.contentHtml || '').replace(/<[^>]+>/g, '\n').replace(/\n\s*\n/g, '\n\n').trim();
+      if (idx < sectionsToExport.length - 1) {
+        text += '\n\n* * *\n\n';
+      }
+    });
+
     if (exportPlacement === 'bottom' || exportPlacement === 'both') {
       text += `\n\n========================================\n`;
       text += `Signed: ${typedName}\n`;
@@ -75,29 +121,50 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
   const handleDownloadTxt = () => {
     const text = getPlainText();
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    downloadBlob(blob, `${title.replace(/\s+/g, '_')}.txt`);
+    downloadBlob(blob, `${effectiveTitle.replace(/\s+/g, '_')}.txt`);
   };
 
   const handleDownloadMd = () => {
-    let md = `# ${title}\n\n`;
+    let md = `# ${effectiveTitle}\n\n`;
     if (bookSubtitle) md += `*${bookSubtitle}*\n\n`;
     md += `**Author:** ${author}  \n`;
     md += `**Date:** ${new Date().toLocaleDateString()}  \n\n`;
     md += `---\n\n`;
-    md += contentHtml.replace(/<p>/g, '').replace(/<\/p>/g, '\n\n').replace(/<[^>]+>/g, '');
+
+    sectionsToExport.forEach((sec, idx) => {
+      if (sectionsToExport.length > 1 && sec.title) {
+        md += `\n\n## ${sec.title}\n\n`;
+      }
+      md += (sec.contentHtml || '').replace(/<p>/g, '').replace(/<\/p>/g, '\n\n').replace(/<[^>]+>/g, '');
+      if (idx < sectionsToExport.length - 1) {
+        md += '\n\n* * *\n\n';
+      }
+    });
+
     if (exportPlacement === 'bottom' || exportPlacement === 'both') {
       md += `\n\n---\n\n*Signed by ${typedName}*\n`;
     }
     const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-    downloadBlob(blob, `${title.replace(/\s+/g, '_')}.md`);
+    downloadBlob(blob, `${effectiveTitle.replace(/\s+/g, '_')}.md`);
   };
 
   const handleDownloadDocx = () => {
+    const sectionsDocHtml = sectionsToExport
+      .map(
+        (sec, idx) => `
+        <div style="${idx > 0 ? 'page-break-before: always; mso-break-type: page-break;' : ''}">
+          ${sectionsToExport.length > 1 && sec.title ? `<h2 style="font-size: 18pt; text-align: center; margin-top: 0.8in; margin-bottom: 0.3in;">${sec.title}</h2>` : ''}
+          <div>${sec.contentHtml}</div>
+        </div>
+      `
+      )
+      .join('\n');
+
     let docHtml = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
         <meta charset="utf-8">
-        <title>${title}</title>
+        <title>${effectiveTitle}</title>
         <style>
           body { font-family: 'Georgia', serif; font-size: 12pt; line-height: 1.6; margin: 1in; }
           h1 { text-align: center; font-size: 24pt; margin-bottom: 0.5in; }
@@ -107,14 +174,14 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
         </style>
       </head>
       <body>
-        <h1>${title}</h1>
-        ${bookSubtitle ? `<div className="subtitle">${bookSubtitle}</div>` : ''}
-        <div className="author">By ${author}</div>
+        <h1>${effectiveTitle}</h1>
+        ${bookSubtitle ? `<div class="subtitle">${bookSubtitle}</div>` : ''}
+        <div class="author">By ${author}</div>
         <hr/>
-        <div>${contentHtml}</div>
+        ${sectionsDocHtml}
         ${
           exportPlacement === 'bottom' || exportPlacement === 'both'
-            ? `<div className="signature-box">
+            ? `<div class="signature-box">
                 <p><strong>Signed by Author:</strong> ${typedName}</p>
                 <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
                </div>`
@@ -124,35 +191,30 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
       </html>
     `;
     const blob = new Blob([docHtml], { type: 'application/msword;charset=utf-8' });
-    downloadBlob(blob, `${title.replace(/\s+/g, '_')}.doc`);
+    downloadBlob(blob, `${effectiveTitle.replace(/\s+/g, '_')}.doc`);
   };
 
   const handleDownloadHtml = () => {
-    let fullHtml = `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <title>${title}</title>
-        <style>
-          body { font-family: 'EB Garamond', Georgia, serif; max-width: 800px; margin: 2rem auto; padding: 2rem; color: #1c1917; background: #fafaf9; }
-          h1 { font-size: 2.5rem; text-align: center; }
-          .watermark { position: fixed; top: 40%; left: 10%; transform: rotate(-30deg); font-size: 3.5rem; color: rgba(0,0,0,${sig.watermarkOpacity}); font-weight: bold; pointer-events: none; }
-          .signature { margin-top: 3rem; pt: 1rem; border-top: 2px solid #d97706; }
-        </style>
-      </head>
-      <body>
-        ${(exportPlacement === 'watermark' || exportPlacement === 'both') ? `<div className="watermark">${watermarkText}</div>` : ''}
-        <h1>${title}</h1>
-        <p style="text-align:center; font-style:italic;">By ${author}</p>
-        <hr/>
-        <div>${contentHtml}</div>
-        ${(exportPlacement === 'bottom' || exportPlacement === 'both') ? `<div className="signature">✍️ <strong>Signed:</strong> ${typedName} (${new Date().toLocaleDateString()})</div>` : ''}
-      </body>
-      </html>
-    `;
+    const fullHtml = generateManuscriptPrintHtml({
+      title: effectiveTitle,
+      subtitle: bookSubtitle,
+      author,
+      genre,
+      sections: sectionsToExport,
+      watermark: {
+        enabled: exportPlacement === 'watermark' || exportPlacement === 'both',
+        text: watermarkText,
+        opacity: sig.watermarkOpacity || 0.12,
+      },
+      signature: {
+        enabled: exportPlacement === 'bottom' || exportPlacement === 'both',
+        typedName,
+        date: new Date().toLocaleDateString(),
+      },
+    });
+
     const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-    downloadBlob(blob, `${title.replace(/\s+/g, '_')}.html`);
+    downloadBlob(blob, `${effectiveTitle.replace(/\s+/g, '_')}.html`);
   };
 
   const handlePrintPdf = () => {
@@ -166,56 +228,26 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
       },
     });
 
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+    const fullPrintHtml = generateManuscriptPrintHtml({
+      title: effectiveTitle,
+      subtitle: bookSubtitle,
+      author,
+      genre,
+      sections: sectionsToExport,
+      watermark: {
+        enabled: exportPlacement === 'watermark' || exportPlacement === 'both',
+        text: watermarkText,
+        opacity: sig.watermarkOpacity || 0.12,
+      },
+      signature: {
+        enabled: exportPlacement === 'bottom' || exportPlacement === 'both',
+        typedName,
+        date: new Date().toLocaleDateString(),
+      },
+    });
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>${title} - Printable Manuscript</title>
-        <style>
-          @page { size: A4; margin: 25mm 20mm; }
-          body { font-family: 'EB Garamond', Georgia, 'Times New Roman', serif; color: #1c1917; background: #fff; line-height: 1.7; margin: 0; padding: 0; }
-          .watermark { position: fixed; top: 45%; left: 5%; right: 5%; transform: rotate(-35deg); font-size: 3rem; font-weight: 800; text-align: center; color: rgba(0,0,0,${sig.watermarkOpacity}); text-transform: uppercase; letter-spacing: 4px; pointer-events: none; z-index: -1; }
-          .cover-page { text-align: center; padding-top: 35vh; page-break-after: always; }
-          .cover-title { font-size: 36pt; font-weight: bold; margin-bottom: 15px; }
-          .cover-subtitle { font-size: 18pt; font-style: italic; color: #57534e; margin-bottom: 40px; }
-          .cover-author { font-size: 14pt; text-transform: uppercase; letter-spacing: 2px; }
-          .manuscript-body { font-size: 12pt; }
-          .manuscript-body p { margin-bottom: 1rem; text-indent: 1.5rem; }
-          .signature-footer { margin-top: 4rem; padding-top: 1rem; border-top: 1.5px solid #d97706; page-break-inside: avoid; }
-          .sig-font { font-family: 'Caveat', 'Dancing Script', cursive, serif; font-size: 22pt; color: #1c1917; }
-        </style>
-      </head>
-      <body>
-        ${(exportPlacement === 'watermark' || exportPlacement === 'both') ? `<div className="watermark">${watermarkText}</div>` : ''}
-        
-        <div className="cover-page">
-          <div className="cover-title">${title}</div>
-          ${bookSubtitle ? `<div className="cover-subtitle">${bookSubtitle}</div>` : ''}
-          <div className="cover-author">By ${author}</div>
-        </div>
-
-        <div className="manuscript-body">
-          ${contentHtml}
-
-          ${(exportPlacement === 'bottom' || exportPlacement === 'both') ? `
-            <div className="signature-footer">
-              <div className="sig-font">${typedName}</div>
-              <div style="font-size: 9pt; color: #78716c; margin-top: 4px;">Verified Author Signature • ${new Date().toLocaleDateString()}</div>
-            </div>
-          ` : ''}
-        </div>
-      </body>
-      </html>
-    `);
-
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 400);
+    // Uses isolated iframe printing that formats across unlimited pages without cutoff
+    printManuscriptHtml(fullPrintHtml);
   };
 
   const downloadBlob = (blob: Blob, filename: string) => {
@@ -235,11 +267,52 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
             <div>
-              <span className="font-semibold">{title}</span>
-              <span className="text-[11px] opacity-80 block">Ready for publication, printing, or digital submission.</span>
+              <span className="font-semibold">{effectiveTitle}</span>
+              <span className="text-[11px] opacity-80 block">
+                {sectionsToExport.length > 1
+                  ? `Full manuscript compilation across ${sectionsToExport.length} chapters, formatted for unlimited pages.`
+                  : 'Complete formatted document, ready for publication, printing, or digital submission.'}
+              </span>
             </div>
           </div>
         </div>
+
+        {/* Scope selector if multiple chapters exist */}
+        {hasMultipleChapters && (
+          <div className="p-3 rounded-xl bg-stone-100 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700/80 space-y-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-300 font-mono flex items-center gap-1.5">
+              <BookOpen className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span>Export Scope</span>
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setExportScope('book')}
+                className={`px-3 py-2 rounded-lg text-xs font-medium border text-left transition flex items-center justify-between ${
+                  exportScope === 'book'
+                    ? 'bg-amber-500/15 border-amber-500/50 text-amber-900 dark:text-amber-200 font-semibold'
+                    : 'bg-white dark:bg-stone-900 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300'
+                }`}
+              >
+                <span>📚 Complete Book ({chapters?.length} Chapters)</span>
+                {exportScope === 'book' && <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setExportScope('chapter')}
+                className={`px-3 py-2 rounded-lg text-xs font-medium border text-left transition flex items-center justify-between ${
+                  exportScope === 'chapter'
+                    ? 'bg-amber-500/15 border-amber-500/50 text-amber-900 dark:text-amber-200 font-semibold'
+                    : 'bg-white dark:bg-stone-900 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300'
+                }`}
+              >
+                <span>📄 Current Chapter Only ({doc?.title || 'Chapter'})</span>
+                {exportScope === 'chapter' && <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Signature & Watermark Quick Controls */}
         <div className="p-4 rounded-xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-800 space-y-3">
@@ -317,7 +390,7 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
                   Print / Save as PDF
                 </div>
                 <div className="text-[11px] text-stone-500 dark:text-stone-400">
-                  Formatted cover, page numbers & signature
+                  Full multi-page document with cover & page numbers
                 </div>
               </div>
             </button>
@@ -337,7 +410,7 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
                   Microsoft Word
                 </div>
                 <div className="text-[11px] text-stone-500 dark:text-stone-400">
-                  Editable Word document file
+                  Editable Word document file with chapter breaks
                 </div>
               </div>
             </button>
@@ -357,7 +430,7 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
                   Markdown (.md)
                 </div>
                 <div className="text-[11px] text-stone-500 dark:text-stone-400">
-                  Plain markdown syntax with headers
+                  Plain markdown syntax with headers & dividers
                 </div>
               </div>
             </button>
@@ -377,7 +450,7 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
                   Plain Text (.txt)
                 </div>
                 <div className="text-[11px] text-stone-500 dark:text-stone-400">
-                  Unformatted plain text document
+                  Complete unformatted manuscript text
                 </div>
               </div>
             </button>
@@ -397,7 +470,7 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
                   HTML Web Document
                 </div>
                 <div className="text-[11px] text-stone-500 dark:text-stone-400">
-                  Self-contained web page with watermark
+                  Self-contained web page with cover & watermark
                 </div>
               </div>
             </button>

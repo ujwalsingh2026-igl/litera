@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
 import { Modal } from '../ui';
 import type { Chapter, BookRollupStats } from '../../types';
-import { Printer, Copy, Download, Check } from 'lucide-react';
+import { Printer, Copy, Download, Check, FileText } from 'lucide-react';
+import {
+  generateManuscriptPrintHtml,
+  printManuscriptHtml,
+} from '../../utils/printManuscript';
+import { useApp } from '../../state';
 
 interface ManuscriptCompileModalProps {
   isOpen: boolean;
@@ -24,6 +29,7 @@ export const ManuscriptCompileModal: React.FC<ManuscriptCompileModalProps> = ({
   chapters,
   stats,
 }) => {
+  const { settings } = useApp();
   const [copied, setCopied] = useState(false);
 
   const getPlainText = () => {
@@ -61,8 +67,76 @@ export const ManuscriptCompileModal: React.FC<ManuscriptCompileModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const handleDownloadDocx = () => {
+    const chaptersDocxHtml = chapters
+      .map(
+        (c, idx) => `
+        <div style="${idx > 0 ? 'page-break-before: always; mso-break-type: page-break;' : ''}">
+          <h2 style="font-size: 18pt; text-align: center; margin-top: 0.8in; margin-bottom: 0.3in;">${c.title}</h2>
+          <div>${c.content}</div>
+        </div>
+      `
+      )
+      .join('\n');
+
+    const docHtml = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8">
+        <title>${bookTitle}</title>
+        <style>
+          body { font-family: 'Georgia', serif; font-size: 12pt; line-height: 1.6; margin: 1in; }
+          h1 { text-align: center; font-size: 24pt; margin-bottom: 0.5in; }
+          .subtitle { text-align: center; font-style: italic; font-size: 14pt; margin-bottom: 0.25in; }
+          .author { text-align: center; font-weight: bold; font-size: 12pt; margin-bottom: 0.5in; }
+        </style>
+      </head>
+      <body>
+        <h1>${bookTitle}</h1>
+        ${bookSubtitle ? `<div class="subtitle">${bookSubtitle}</div>` : ''}
+        <div class="author">By ${author}</div>
+        <hr/>
+        ${chaptersDocxHtml}
+      </body>
+      </html>
+    `;
+    const blob = new Blob([docHtml], { type: 'application/msword;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${bookTitle.replace(/\s+/g, '_')}_Manuscript.doc`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handlePrint = () => {
-    window.print();
+    const sig = settings.signature;
+    const printHtml = generateManuscriptPrintHtml({
+      title: bookTitle,
+      subtitle: bookSubtitle,
+      author,
+      genre,
+      sections: chapters.map((c) => ({
+        title: c.title,
+        contentHtml: c.content,
+      })),
+      watermark: sig?.watermarkText
+        ? {
+            enabled: sig.placement === 'watermark' || sig.placement === 'both',
+            text: sig.watermarkText,
+            opacity: sig.watermarkOpacity || 0.1,
+          }
+        : undefined,
+      signature: sig?.typedName
+        ? {
+            enabled: sig.placement === 'bottom' || sig.placement === 'both',
+            typedName: sig.typedName,
+          }
+        : undefined,
+    });
+
+    // Uses isolated multi-page iframe printing ensuring clean page breaks and unlimited pages
+    printManuscriptHtml(printHtml);
   };
 
   return (
@@ -82,22 +156,34 @@ export const ManuscriptCompileModal: React.FC<ManuscriptCompileModalProps> = ({
             <button
               onClick={handleCopy}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+              title="Copy all chapters to clipboard"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? 'Copied' : 'Copy Text'}</span>
+              <span>{copied ? 'Copied' : 'Copy'}</span>
             </button>
 
             <button
               onClick={() => handleDownload('md')}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+              title="Export complete Markdown file"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export .md</span>
+              <span>.md</span>
+            </button>
+
+            <button
+              onClick={handleDownloadDocx}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
+              title="Export complete Word .doc with chapter breaks"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>.doc</span>
             </button>
 
             <button
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 transition font-medium"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-amber-600 dark:hover:bg-amber-500 hover:text-white transition font-medium"
+              title="Print or Save complete multi-page manuscript to PDF"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>Print / PDF</span>

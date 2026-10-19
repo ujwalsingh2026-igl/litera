@@ -311,3 +311,36 @@
 .font-mono-literary { font-family: var(--font-mono); }
 .font-classic-literary { font-family: var(--font-classic); }
 .font-handwriting-literary { font-family: var(--font-handwriting); }
+
+/* Global Multi-Page Print Rules: Prevents browser print truncation across all views and dialogs */
+@media print {
+  html, body {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    position: static !important;
+    background: #ffffff !important;
+    color: #1c1917 !important;
+  }
+
+  #root, .flex.h-screen, main, [role="dialog"], .writing-sheet, .writing-sheet-content {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    position: static !important;
+    display: block !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Hide app navigation, headers, toolbars, sidebars, buttons, status bars, and modal backdrops */
+  header, nav, aside, footer,
+  .no-print,
+  button,
+  [role="dialog"] > div:first-child,
+  .fixed:not(.watermark):not(.watermark-container) {
+    display: none !important;
+  }
+}
+

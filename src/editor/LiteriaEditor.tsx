@@ -18,7 +18,7 @@ import { TemplateDesignerModal } from '../components/templates/TemplateDesignerM
 import { GlobalAiModal } from '../components/ai/GlobalAiModal';
 import { useAuth } from '../auth';
 import { googleCloudSyncService } from '../services/googleCloudSyncService';
-import type { Document, DocumentStats, DocumentType, DocumentTypeMetadata, Chapter } from '../types';
+import type { Document, DocumentStats, DocumentType, DocumentTypeMetadata, Chapter, Book } from '../types';
 import './editor.css';
 
 const DOC_TYPE_LABELS: Record<DocumentType, { label: string; icon: string }> = {
@@ -52,6 +52,7 @@ export const LiteriaEditor: React.FC = () => {
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const [bookChapters, setBookChapters] = useState<Chapter[]>([]);
+  const [parentBook, setParentBook] = useState<Book | null>(null);
   const [focusDepth, setFocusDepth] = useState<FocusDepth>('off');
   const [typewriterMode, setTypewriterMode] = useState<boolean>(
     settings.editor.typewriterMode || false
@@ -60,12 +61,14 @@ export const LiteriaEditor: React.FC = () => {
   const saveTimeoutRef = useRef<number | null>(null);
   const currentDocIdRef = useRef<string | null>(activeDocument?.id || null);
 
-  // Sync chapters when editing a book document
+  // Sync chapters and book details when editing a book document
   useEffect(() => {
     if (doc?.bookId) {
       bookService.getChapters(doc.bookId).then(setBookChapters);
+      bookService.getById(doc.bookId).then((b) => setParentBook(b || null));
     } else {
       setBookChapters([]);
+      setParentBook(null);
     }
   }, [doc?.bookId]);
 
@@ -548,6 +551,12 @@ export const LiteriaEditor: React.FC = () => {
         isOpen={exportModalOpen}
         onClose={() => setExportModalOpen(false)}
         document={doc}
+        bookTitle={parentBook?.title}
+        bookSubtitle={parentBook?.subtitle}
+        author={parentBook?.author || settings.signature?.typedName || user?.displayName || 'Author'}
+        genre={parentBook?.genre}
+        chapters={bookChapters.length > 0 ? bookChapters : undefined}
+        liveContent={editor ? editor.getHTML() : undefined}
       />
 
       <AuthorSignatureModal
