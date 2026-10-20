@@ -1,4 +1,4 @@
-const CACHE_NAME = 'literia-offline-v3';
+const CACHE_NAME = 'literia-offline-v4';
 const STATIC_ASSETS = [
   './',
   './index.html',
