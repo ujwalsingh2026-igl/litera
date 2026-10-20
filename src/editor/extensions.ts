@@ -13,10 +13,12 @@ import Superscript from '@tiptap/extension-superscript';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
 import Placeholder from '@tiptap/extension-placeholder';
+import { CustomHorizontalRule } from './CustomHorizontalRule';
 
 export function getEditorExtensions(placeholderText = 'Where every story finds its form... Start writing...') {
   return [
     StarterKit.configure({
+      horizontalRule: false,
       heading: {
         levels: [1, 2, 3, 4],
       },
@@ -29,6 +31,7 @@ export function getEditorExtensions(placeholderText = 'Where every story finds i
         keepAttributes: false,
       },
     }),
+    CustomHorizontalRule,
     Underline,
     Highlight.configure({
       multicolor: true,

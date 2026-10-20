@@ -35,9 +35,7 @@ interface MobileEditorToolbarProps {
   onToggleFindReplace?: () => void;
 }
 
-const safeChain = (editor: Editor) => {
-  return editor.isFocused ? editor.chain().focus() : editor.chain();
-};
+const safeChain = (editor: Editor) => editor.chain().focus();
 
 export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
   editor,

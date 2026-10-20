@@ -41,7 +41,7 @@ interface EditorToolbarProps {
   className?: string;
 }
 
-const safeChain = (ed: Editor) => (ed.isFocused ? ed.chain().focus() : ed.chain());
+const safeChain = (ed: Editor) => ed.chain().focus();
 
 export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   editor,
@@ -91,6 +91,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
       {/* History Group */}
       <div className="flex items-center gap-0.5 pr-1.5 border-r border-stone-200 dark:border-stone-800">
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).undo().run()}
           disabled={!editor.can().undo()}
           className="p-1.5 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 transition"
@@ -99,6 +101,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
           <Undo2 className="w-4 h-4" />
         </button>
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).redo().run()}
           disabled={!editor.can().redo()}
           className="p-1.5 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 transition"
@@ -141,6 +145,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
       {/* Basic Marks */}
       <div className="flex items-center gap-0.5 px-1 border-r border-stone-200 dark:border-stone-800">
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).toggleBold().run()}
           className={cn(
             'p-1.5 rounded-md transition',
@@ -154,6 +160,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).toggleItalic().run()}
           className={cn(
             'p-1.5 rounded-md transition',
@@ -167,6 +175,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).toggleUnderline().run()}
           className={cn(
             'p-1.5 rounded-md transition',
@@ -180,6 +190,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).toggleStrike().run()}
           className={cn(
             'p-1.5 rounded-md transition',
@@ -193,6 +205,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).toggleHighlight().run()}
           className={cn(
             'p-1.5 rounded-md transition',
@@ -208,6 +222,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         {/* Color Picker trigger */}
         <div className="relative inline-block">
           <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => setShowColorPicker((prev) => !prev)}
             className="p-1.5 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 transition flex items-center gap-1"
             title="Text Color"
@@ -219,7 +235,9 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
               {colors.map((c) => (
                 <button
                   key={c}
+                  type="button"
                   style={{ backgroundColor: c }}
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     safeChain(editor).setColor(c).run();
                     setShowColorPicker(false);
@@ -235,6 +253,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
       {/* Alignment Group */}
       <div className="flex items-center gap-0.5 px-1 border-r border-stone-200 dark:border-stone-800">
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).setTextAlign('left').run()}
           className={cn(
             'p-1.5 rounded-md transition',
@@ -248,6 +268,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).setTextAlign('center').run()}
           className={cn(
             'p-1.5 rounded-md transition',
@@ -261,6 +283,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).setTextAlign('right').run()}
           className={cn(
             'p-1.5 rounded-md transition',
@@ -274,6 +298,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).setTextAlign('justify').run()}
           className={cn(
             'p-1.5 rounded-md transition',
@@ -290,6 +316,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
       {/* Lists & Quotes */}
       <div className="flex items-center gap-0.5 px-1 border-r border-stone-200 dark:border-stone-800">
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).toggleBulletList().run()}
           className={cn(
             'p-1.5 rounded-md transition',
@@ -303,6 +331,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).toggleOrderedList().run()}
           className={cn(
             'p-1.5 rounded-md transition',
@@ -316,6 +346,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).toggleBlockquote().run()}
           className={cn(
             'p-1.5 rounded-md transition',
@@ -329,6 +361,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).setHorizontalRule().run()}
           className="p-1.5 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 transition"
           title="Horizontal Rule Separator"
@@ -340,6 +374,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
       {/* Sub/Superscript */}
       <div className="flex items-center gap-0.5 px-1 border-r border-stone-200 dark:border-stone-800">
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).toggleSubscript().run()}
           className={cn(
             'p-1.5 rounded-md transition',
@@ -353,6 +389,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => safeChain(editor).toggleSuperscript().run()}
           className={cn(
             'p-1.5 rounded-md transition',
@@ -369,6 +407,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
       {/* Inserts: Link, Image, Table */}
       <div className="flex items-center gap-0.5 px-1 border-r border-stone-200 dark:border-stone-800">
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={setLink}
           className={cn(
             'p-1.5 rounded-md transition',
@@ -382,6 +422,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={addImage}
           className="p-1.5 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 transition"
           title="Insert Image"
@@ -390,6 +432,8 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
         </button>
 
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={insertTable}
           className="p-1.5 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 transition"
           title="Insert Table"

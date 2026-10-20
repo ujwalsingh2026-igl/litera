@@ -18,7 +18,7 @@ interface TypeSpecificToolbarProps {
   onUpdateMetadata: (metadata: DocumentTypeMetadata) => void;
 }
 
-const safeChain = (ed: Editor) => (ed.isFocused ? ed.chain().focus() : ed.chain());
+const safeChain = (ed: Editor) => ed.chain().focus();
 
 export const TypeSpecificToolbar: React.FC<TypeSpecificToolbarProps> = ({
   editor,

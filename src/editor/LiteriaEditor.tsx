@@ -107,7 +107,7 @@ export const LiteriaEditor: React.FC = () => {
     editorProps: {
       attributes: {
         class:
-          'focus:outline-none min-h-[500px] max-w-none font-serif text-[var(--color-text-primary)] text-lg leading-relaxed selection:bg-amber-100 dark:selection:bg-amber-900/40',
+          'focus:outline-none min-h-[500px] max-w-none font-serif text-[var(--color-text-primary)] text-lg selection:bg-amber-100 dark:selection:bg-amber-900/40',
         spellcheck: settings.editor.spellCheck ? 'true' : 'false',
         autocorrect: 'on',
         autocapitalize: 'sentences',
