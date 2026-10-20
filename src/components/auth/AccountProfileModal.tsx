@@ -56,7 +56,7 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
     setIsSyncing(true);
     setSyncSuccessMessage(null);
     try {
-      const res = await googleCloudSyncService.syncPreLoginManuscripts(user);
+      const res = await googleCloudSyncService.syncAllDocumentsWithCloud(user);
       const allDocs = await documentService.getAll();
       const vaultData = {
         user,
@@ -66,7 +66,7 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
       };
       localStorage.setItem(`literia_vault_${secretCode}`, JSON.stringify(vaultData));
       localStorage.setItem('literia_latest_vault_sync', new Date().toISOString());
-      setSyncSuccessMessage(`✓ Securely encrypted & synced ${res.syncedCount} manuscripts to your Google Cloud Vault!`);
+      setSyncSuccessMessage(`✓ Securely encrypted & synced ${res.syncedCount} manuscripts across all your devices!`);
       setTimeout(() => setSyncSuccessMessage(null), 4000);
     } finally {
       setIsSyncing(false);
@@ -77,14 +77,12 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
     setIsSyncing(true);
     setSyncSuccessMessage(null);
     try {
-      const restored = await googleCloudSyncService.restoreFromGoogleCloud(user);
-      if (restored > 0) {
-        setSyncSuccessMessage(`✓ Successfully restored ${restored} manuscripts from your Google Cloud Vault!`);
-        setTimeout(() => {
-          window.location.reload();
-        }, 1200);
+      const res = await googleCloudSyncService.syncAllDocumentsWithCloud(user);
+      if (res.syncedCount > 0) {
+        setSyncSuccessMessage(`✓ Successfully synced ${res.syncedCount} manuscripts across all devices!`);
+        setTimeout(() => setSyncSuccessMessage(null), 4000);
       } else {
-        setSyncSuccessMessage('No cloud backups found yet for this account. Click "Backup to Cloud Now" to save your first snapshot.');
+        setSyncSuccessMessage('No cloud backups found yet for this account. Create a manuscript to start auto-syncing!');
         setTimeout(() => setSyncSuccessMessage(null), 4000);
       }
     } finally {

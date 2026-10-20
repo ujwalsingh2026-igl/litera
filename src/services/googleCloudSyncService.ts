@@ -108,9 +108,56 @@ class GoogleCloudSyncService {
     };
   }
 
+  private liveEventWs: WebSocket | null = null;
+
   setCurrentUser(user: User | null): void {
     this.currentUser = user;
     this.notifyListeners();
+    if (user && user.provider !== 'guest') {
+      this.startLiveSyncListener(user);
+    }
+  }
+
+  /**
+   * Listens for document change signals from other logged-in devices in real time
+   */
+  startLiveSyncListener(user: User): void {
+    if (!user || user.provider === 'guest' || typeof window === 'undefined') return;
+    const safeUserId = (user.email || user.id || 'author')
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .toLowerCase();
+
+    if (this.liveEventWs) {
+      try {
+        this.liveEventWs.close();
+      } catch {}
+    }
+
+    try {
+      const wsUrl = `wss://ntfy.sh/literia_user_events_${safeUserId}/ws`;
+      this.liveEventWs = new WebSocket(wsUrl);
+
+      this.liveEventWs.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.event === 'message') {
+            // Received real-time update event from another device
+            console.log('[Literia Cloud] Remote device activity detected, syncing...');
+            this.syncAllDocumentsWithCloud(user).catch(() => {});
+          }
+        } catch {}
+      };
+
+      this.liveEventWs.onerror = () => {};
+      this.liveEventWs.onclose = () => {
+        // Reconnect after delay if user still active
+        setTimeout(() => {
+          if (this.currentUser && (this.currentUser.id === user.id || this.currentUser.email === user.email)) {
+            this.startLiveSyncListener(user);
+          }
+        }, 5000);
+      };
+    } catch {}
   }
 
   private getVaultStorageKey(userId: string): string {
@@ -121,7 +168,8 @@ class GoogleCloudSyncService {
    * Derive a 256-bit cryptographic AES-GCM key unique to the user
    */
   private async getVaultCryptoKey(userId: string): Promise<CryptoKey> {
-    const rawSecret = `LITERIA_ZERO_KNOWLEDGE_VAULT_SALT_${userId}_AES_256`;
+    const cleanId = userId.trim().toLowerCase();
+    const rawSecret = `LITERIA_ZERO_KNOWLEDGE_VAULT_SALT_${cleanId}_AES_256`;
     const enc = new TextEncoder();
     const hash = await crypto.subtle.digest('SHA-256', enc.encode(rawSecret));
     return crypto.subtle.importKey(
@@ -191,68 +239,110 @@ class GoogleCloudSyncService {
   }
 
   /**
-   * Migrate and sync all pre-login local manuscripts when user signs in with Google
+   * Universal Two-Way Cloud Document Synchronization (Google Drive / Docs style)
+   * Merges documents between cloud and local IndexedDB across all logged-in devices.
    */
-  async syncPreLoginManuscripts(user: User): Promise<{ syncedCount: number; success: boolean }> {
-    if (!user || !user.id) return { syncedCount: 0, success: false };
+  async syncAllDocumentsWithCloud(user: User): Promise<{ syncedCount: number; success: boolean }> {
+    if (!user || !user.id || user.provider === 'guest') return { syncedCount: 0, success: false };
     this.currentUser = user;
 
     try {
       this.isSyncing = true;
       this.notifyListeners();
 
-      // 1. Fetch all local documents created before or during session
-      const localDocs = await db.documents.toArray();
-      const activeDocs = localDocs.filter((d) => !d.isDeleted);
+      // 1. Fetch remote manuscripts from Cloud Vault (Backend / Multi-device)
+      const cloudDocs = await this.restoreFromGoogleDriveBackend(user);
 
-      if (activeDocs.length === 0) {
-        await this.restoreFromGoogleCloud(user);
-        return { syncedCount: 0, success: true };
+      // 2. Fetch local manuscripts from Dexie IndexedDB
+      const localDocs = await db.documents.toArray();
+      const activeLocal = localDocs.filter((d) => !d.isDeleted);
+
+      // 3. Intelligent Two-Way Merge
+      const mergedMap = new Map<string, Document>();
+
+      // Populate cloud documents first
+      if (cloudDocs && Array.isArray(cloudDocs)) {
+        for (const cDoc of cloudDocs) {
+          if (cDoc && cDoc.id) {
+            mergedMap.set(cDoc.id, cDoc);
+          }
+        }
       }
 
-      // 2. Encrypt all documents client-side
-      const { iv, cipher, hash } = await this.encryptPayload(activeDocs, user.id);
+      // Merge local documents
+      for (const lDoc of activeLocal) {
+        if (!lDoc || !lDoc.id) continue;
 
-      const vaultPayload: CloudVaultPayload = {
-        version: 1,
-        userId: user.id,
-        email: user.email || 'author@google.cloud',
-        timestamp: Date.now(),
-        iv,
-        encryptedData: cipher,
-        integritySignature: hash,
-        documentCount: activeDocs.length,
-      };
-
-      // 3. Persist to Secure Google Cloud Vault Storage (Local + Backend)
-      const vaultKey = this.getVaultStorageKey(user.id);
-      localStorage.setItem(vaultKey, JSON.stringify(vaultPayload));
-
-      // Asynchronously push consecutive backup snapshot to Google Drive AppData backend
-      this.uploadToGoogleDriveBackend(vaultPayload).catch((err) => {
-        console.warn('Backend cloud backup background notice:', err);
-      });
-
-      // 4. Update local documents state
-      await db.transaction('rw', db.documents, async () => {
-        for (const doc of activeDocs) {
-          await db.documents.update(doc.id, {
-            updatedAt: Date.now(),
-          });
+        // Don't let an empty starter document overwrite existing manuscripts
+        const isStarter = lDoc.title === 'Welcome to LITERIA' && activeLocal.length === 1 && mergedMap.size > 0;
+        if (isStarter) {
+          continue;
         }
-      });
 
-      // 5. Clear pending offline queue
+        const existingCloud = mergedMap.get(lDoc.id);
+        if (!existingCloud) {
+          mergedMap.set(lDoc.id, lDoc);
+        } else {
+          // Keep document with newer timestamp
+          if ((lDoc.updatedAt || 0) >= (existingCloud.updatedAt || 0)) {
+            mergedMap.set(lDoc.id, lDoc);
+          }
+        }
+      }
+
+      const mergedDocs = Array.from(mergedMap.values());
+
+      // 4. Update local Dexie storage with merged documents
+      if (mergedDocs.length > 0) {
+        await db.transaction('rw', db.documents, async () => {
+          for (const doc of mergedDocs) {
+            await db.documents.put(doc);
+          }
+        });
+      }
+
+      // 5. Encrypt and upload the complete merged library to Cloud Vault
+      if (mergedDocs.length > 0) {
+        const { iv, cipher, hash } = await this.encryptPayload(mergedDocs, user.id);
+        const vaultPayload: CloudVaultPayload = {
+          version: 1,
+          userId: user.id,
+          email: user.email || 'author@google.cloud',
+          timestamp: Date.now(),
+          iv,
+          encryptedData: cipher,
+          integritySignature: hash,
+          documentCount: mergedDocs.length,
+        };
+
+        const vaultKey = this.getVaultStorageKey(user.id);
+        localStorage.setItem(vaultKey, JSON.stringify(vaultPayload));
+
+        // Background push to persistent backend
+        await this.uploadToGoogleDriveBackend(vaultPayload);
+      }
+
+      // 6. Clear offline queue
       this.pendingOfflineDocIds.clear();
       this.savePendingOfflineQueue();
 
-      // 6. Update user sync metadata
+      // 7. Update sync metadata
       localStorage.setItem(`literia_last_sync_${user.id}`, String(Date.now()));
-      localStorage.setItem(`literia_synced_count_${user.id}`, String(activeDocs.length));
+      localStorage.setItem(`literia_synced_count_${user.id}`, String(mergedDocs.length));
 
-      return { syncedCount: activeDocs.length, success: true };
+      // 8. Broadcast update event so all UI components (Library, Home, Editor) refresh
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('literia:documents-updated', {
+            detail: { count: mergedDocs.length, timestamp: Date.now() },
+          })
+        );
+      }
+
+      console.log(`[Literia Cloud] Synchronized ${mergedDocs.length} manuscripts across all devices!`);
+      return { syncedCount: mergedDocs.length, success: true };
     } catch (err) {
-      console.error('Google Cloud Vault sync failed:', err);
+      console.error('[Literia Cloud] Sync failed:', err);
       return { syncedCount: 0, success: false };
     } finally {
       this.isSyncing = false;
@@ -261,10 +351,17 @@ class GoogleCloudSyncService {
   }
 
   /**
+   * Migrate and sync all pre-login local manuscripts when user signs in with Google
+   */
+  async syncPreLoginManuscripts(user: User): Promise<{ syncedCount: number; success: boolean }> {
+    return this.syncAllDocumentsWithCloud(user);
+  }
+
+  /**
    * Alias to trigger immediate full cloud vault synchronization
    */
   async syncAllToGoogleVault(user: User): Promise<{ syncedCount: number; success: boolean }> {
-    return this.syncPreLoginManuscripts(user);
+    return this.syncAllDocumentsWithCloud(user);
   }
 
   /**
@@ -313,15 +410,26 @@ class GoogleCloudSyncService {
 
     const res = await this.syncPreLoginManuscripts(user);
 
-    if (res.success && isReconnecting) {
-      window.dispatchEvent(
-        new CustomEvent('literia:reconnected-sync', {
-          detail: {
-            syncedCount: res.syncedCount,
-            timestamp: Date.now(),
-          },
-        })
-      );
+    if (res.success) {
+      const safeUserId = (user.email || user.id || 'author')
+        .replace(/[^a-zA-Z0-9]/g, '_')
+        .toLowerCase();
+      fetch(`https://ntfy.sh/literia_user_events_${safeUserId}`, {
+        method: 'POST',
+        headers: { Title: 'doc_updated', Priority: 'min' },
+        body: JSON.stringify({ type: 'doc_updated', timestamp: Date.now() }),
+      }).catch(() => {});
+
+      if (isReconnecting) {
+        window.dispatchEvent(
+          new CustomEvent('literia:reconnected-sync', {
+            detail: {
+              syncedCount: res.syncedCount,
+              timestamp: Date.now(),
+            },
+          })
+        );
+      }
     }
 
     return res.success;
@@ -371,12 +479,13 @@ class GoogleCloudSyncService {
       .replace(/[^a-zA-Z0-9]/g, '_')
       .toLowerCase();
 
-    // 1. Always store to the primary cloud vault relay (global multi-device reach)
+    // 1. Always store to the primary cloud vault relay (global multi-device reach) with Filename attachment header
     try {
       await fetch(`https://ntfy.sh/literia_vault_${safeUserId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Filename: 'vault.json',
           Title: 'literia_cloud_vault_backup',
           Priority: 'high',
         },
@@ -475,8 +584,18 @@ class GoogleCloudSyncService {
         for (let i = lines.length - 1; i >= 0; i--) {
           try {
             const entry = JSON.parse(lines[i]);
-            if (entry.message) {
-              const payload: CloudVaultPayload = JSON.parse(entry.message);
+            let jsonString = entry.message;
+
+            // Handle attachment URL if payload was sent as file
+            if (entry.attachment?.url) {
+              const fileRes = await fetch(entry.attachment.url);
+              if (fileRes.ok) {
+                jsonString = await fileRes.text();
+              }
+            }
+
+            if (jsonString) {
+              const payload: CloudVaultPayload = JSON.parse(jsonString);
               if (payload && payload.encryptedData && payload.iv) {
                 const docs = await this.decryptPayload(payload.encryptedData, payload.iv, user.id);
                 if (docs && docs.length > 0) {

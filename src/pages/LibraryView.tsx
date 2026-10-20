@@ -87,6 +87,15 @@ export const LibraryView: React.FC = () => {
 
   useEffect(() => {
     loadData();
+
+    const handleDocsUpdated = () => {
+      loadData();
+    };
+
+    window.addEventListener('literia:documents-updated', handleDocsUpdated);
+    return () => {
+      window.removeEventListener('literia:documents-updated', handleDocsUpdated);
+    };
   }, []);
 
   const allTags = useMemo(() => Array.from(new Set(docs.flatMap((d) => d.tags || []))), [docs]);

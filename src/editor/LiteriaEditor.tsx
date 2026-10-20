@@ -246,14 +246,20 @@ export const LiteriaEditor: React.FC = () => {
       setIsCollabActive(Boolean(roomId));
     });
 
-    // Check if URL has #collab=ROOM_CODE or ?collab=ROOM_CODE
-    if (typeof window !== 'undefined' && user) {
+    // Automatic Live Synchronization across author's devices (Google Docs / MS Word style)
+    if (typeof window !== 'undefined' && user && doc) {
       const hash = window.location.hash;
+      let targetRoom: string;
+
       if (hash.includes('collab=')) {
-        const code = hash.split('collab=')[1].split('&')[0].replace(/[^A-Z0-9_-]/g, '');
-        if (code) {
-          realtimeCollabService.joinRoom(code, user, doc?.content || '', doc?.title || '');
-        }
+        targetRoom = hash.split('collab=')[1].split('&')[0].replace(/[^A-Z0-9_-]/g, '');
+      } else {
+        // Automatic deterministic room based on document ID so all author's logged in devices sync live
+        targetRoom = `DOC-${doc.id.replace(/[^A-Z0-9_-]/gi, '').slice(0, 12).toUpperCase()}`;
+      }
+
+      if (targetRoom) {
+        realtimeCollabService.joinRoom(targetRoom, user, doc.content || '', doc.title || '');
       }
     }
 
@@ -261,8 +267,9 @@ export const LiteriaEditor: React.FC = () => {
       unsubContent();
       unsubCollab();
       unsubStatus();
+      realtimeCollabService.leaveRoom();
     };
-  }, [editor, user, doc?.content, doc?.title, title]);
+  }, [editor, user, doc?.id]);
 
   // Handle immediate manual save (Ctrl+S)
   const handleImmediateSave = useCallback(async () => {

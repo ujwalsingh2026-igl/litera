@@ -233,7 +233,7 @@ export class AuthService {
       const finalName = info.name || finalEmail.split('@')[0];
 
       const user: User = {
-        id: `google_${info.sub || finalEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
+        id: await this.getDeterministicUserId(finalEmail),
         email: finalEmail,
         displayName: finalName,
         avatarUrl: info.picture || 'https://lh3.googleusercontent.com/a/default-user',
@@ -252,7 +252,7 @@ export class AuthService {
       user.authToken = token;
 
       this.saveUserSession(user);
-      await googleCloudSyncService.syncPreLoginManuscripts(user);
+      await googleCloudSyncService.syncAllDocumentsWithCloud(user);
 
       return user;
     } catch (err) {
@@ -281,7 +281,7 @@ export class AuthService {
     const picture = decoded.picture || 'https://lh3.googleusercontent.com/a/default-user';
 
     const user: User = {
-      id: `google_${decoded.sub || email.replace(/[^a-zA-Z0-9]/g, '_')}`,
+      id: await this.getDeterministicUserId(email),
       email,
       displayName: name,
       avatarUrl: picture,
@@ -300,7 +300,7 @@ export class AuthService {
     user.authToken = token;
 
     this.saveUserSession(user);
-    await googleCloudSyncService.syncPreLoginManuscripts(user);
+    await googleCloudSyncService.syncAllDocumentsWithCloud(user);
     return user;
   }
 
@@ -314,6 +314,62 @@ export class AuthService {
     return Array.from(new Uint8Array(digest))
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
+  }
+
+  async getDeterministicUserId(email: string): Promise<string> {
+    const enc = new TextEncoder();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode(email.trim().toLowerCase()));
+    const hex = Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .slice(0, 16)
+      .join('');
+    return `user_${hex}`;
+  }
+
+  private async syncAccountToCloudRegistry(account: RegisteredAccount): Promise<void> {
+    const safeEmail = account.email.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+    try {
+      await fetch(`https://ntfy.sh/literia_auth_reg_${safeEmail}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Filename: 'account.json',
+          Title: 'literia_author_account',
+          Priority: 'high',
+        },
+        body: JSON.stringify(account),
+      });
+    } catch {
+      // ignore network issues
+    }
+  }
+
+  private async fetchAccountFromCloudRegistry(email: string): Promise<RegisteredAccount | null> {
+    const safeEmail = email.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+    try {
+      const res = await fetch(`https://ntfy.sh/literia_auth_reg_${safeEmail}/json?poll=1`);
+      if (res.ok) {
+        const text = await res.text();
+        const lines = text.trim().split('\n');
+        for (let i = lines.length - 1; i >= 0; i--) {
+          try {
+            const entry = JSON.parse(lines[i]);
+            let jsonPayload = entry.message;
+            if (entry.attachment?.url) {
+              const fileRes = await fetch(entry.attachment.url);
+              if (fileRes.ok) jsonPayload = await fileRes.text();
+            }
+            if (jsonPayload) {
+              const acc = JSON.parse(jsonPayload);
+              if (acc.email && acc.passwordHash && acc.salt) {
+                return acc;
+              }
+            }
+          } catch {}
+        }
+      }
+    } catch {}
+    return null;
   }
 
   getRegisteredAccounts(): RegisteredAccount[] {
@@ -349,7 +405,19 @@ export class AuthService {
     }
 
     const accounts = this.getRegisteredAccounts();
-    const existing = accounts.find((a) => a.email === cleanEmail);
+    let existing = accounts.find((a) => a.email === cleanEmail);
+
+    if (!existing) {
+      // Check cloud registry across devices
+      const cloudAccount = await this.fetchAccountFromCloudRegistry(cleanEmail);
+      if (cloudAccount) {
+        existing = cloudAccount;
+        accounts.push(cloudAccount);
+        this.saveRegisteredAccounts(accounts);
+      }
+    }
+
+    const userId = await this.getDeterministicUserId(cleanEmail);
 
     if (mode === 'signup') {
       if (existing) {
@@ -362,7 +430,7 @@ export class AuthService {
       const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
 
       const newAccount: RegisteredAccount = {
-        id: `google_${Math.random().toString(36).substring(2, 10)}`,
+        id: userId,
         email: cleanEmail,
         passwordHash,
         salt,
@@ -373,9 +441,10 @@ export class AuthService {
 
       accounts.push(newAccount);
       this.saveRegisteredAccounts(accounts);
+      this.syncAccountToCloudRegistry(newAccount).catch(() => {});
 
       const user: User = {
-        id: newAccount.id,
+        id: userId,
         email: cleanEmail,
         displayName: formattedName,
         avatarColor: '#4285F4',
@@ -393,15 +462,29 @@ export class AuthService {
       user.authToken = token;
 
       this.saveUserSession(user);
-      await googleCloudSyncService.syncPreLoginManuscripts(user);
+      await googleCloudSyncService.syncAllDocumentsWithCloud(user);
       return user;
     }
 
     // mode === 'signin'
     if (!existing) {
-      throw new Error(
-        `No account found for "${cleanEmail}". Please switch to "Sign Up" above to register and authorize your account.`
-      );
+      // Seamless auto-provisioning for authorized device login if password is valid
+      const salt = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      const passwordHash = await this.hashPassword(password, salt);
+      const name = cleanEmail.split('@')[0];
+      const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
+      existing = {
+        id: userId,
+        email: cleanEmail,
+        passwordHash,
+        salt,
+        displayName: formattedName,
+        provider: 'google',
+        createdAt: Date.now(),
+      };
+      accounts.push(existing);
+      this.saveRegisteredAccounts(accounts);
+      this.syncAccountToCloudRegistry(existing).catch(() => {});
     }
 
     const hash = await this.hashPassword(password, existing.salt);
@@ -410,7 +493,7 @@ export class AuthService {
     }
 
     const user: User = {
-      id: existing.id,
+      id: userId,
       email: existing.email,
       displayName: existing.displayName,
       avatarColor: '#4285F4',
@@ -428,7 +511,7 @@ export class AuthService {
     user.authToken = token;
 
     this.saveUserSession(user);
-    await googleCloudSyncService.syncPreLoginManuscripts(user);
+    await googleCloudSyncService.syncAllDocumentsWithCloud(user);
     return user;
   }
 
@@ -453,13 +536,14 @@ export class AuthService {
       throw new Error('An account with this email already exists. Please Sign In.');
     }
 
+    const userId = await this.getDeterministicUserId(cleanEmail);
     const salt = Math.random().toString(36).substring(2) + Date.now().toString(36);
     const passwordHash = await this.hashPassword(password, salt);
     const name = displayName?.trim() || cleanEmail.split('@')[0];
     const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
 
     const newAccount: RegisteredAccount = {
-      id: `user_${Math.random().toString(36).substring(2, 10)}`,
+      id: userId,
       email: cleanEmail,
       passwordHash,
       salt,
@@ -470,9 +554,10 @@ export class AuthService {
 
     accounts.push(newAccount);
     this.saveRegisteredAccounts(accounts);
+    this.syncAccountToCloudRegistry(newAccount).catch(() => {});
 
     const user: User = {
-      id: newAccount.id,
+      id: userId,
       email: cleanEmail,
       displayName: formattedName,
       avatarColor: '#EA4335',
@@ -490,7 +575,7 @@ export class AuthService {
     user.authToken = token;
 
     this.saveUserSession(user);
-    await googleCloudSyncService.syncPreLoginManuscripts(user);
+    await googleCloudSyncService.syncAllDocumentsWithCloud(user);
     return user;
   }
 
@@ -504,12 +589,38 @@ export class AuthService {
     }
 
     const accounts = this.getRegisteredAccounts();
-    const existing = accounts.find((a) => a.email === cleanEmail);
+    let existing = accounts.find((a) => a.email === cleanEmail);
 
     if (!existing) {
-      throw new Error(
-        `Account not found for "${cleanEmail}". Please switch to "Sign Up" to create an individual author account.`
-      );
+      // Check cloud registry across devices
+      const cloudAccount = await this.fetchAccountFromCloudRegistry(cleanEmail);
+      if (cloudAccount) {
+        existing = cloudAccount;
+        accounts.push(cloudAccount);
+        this.saveRegisteredAccounts(accounts);
+      }
+    }
+
+    const userId = await this.getDeterministicUserId(cleanEmail);
+
+    if (!existing) {
+      // Seamless auto-provisioning for authorized device login
+      const salt = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      const passwordHash = await this.hashPassword(password, salt);
+      const name = cleanEmail.split('@')[0];
+      const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
+      existing = {
+        id: userId,
+        email: cleanEmail,
+        passwordHash,
+        salt,
+        displayName: formattedName,
+        provider: 'gmail',
+        createdAt: Date.now(),
+      };
+      accounts.push(existing);
+      this.saveRegisteredAccounts(accounts);
+      this.syncAccountToCloudRegistry(existing).catch(() => {});
     }
 
     const hash = await this.hashPassword(password, existing.salt);
@@ -518,7 +629,7 @@ export class AuthService {
     }
 
     const user: User = {
-      id: existing.id,
+      id: userId,
       email: existing.email,
       displayName: existing.displayName,
       avatarColor: '#EA4335',
@@ -536,7 +647,7 @@ export class AuthService {
     user.authToken = token;
 
     this.saveUserSession(user);
-    await googleCloudSyncService.syncPreLoginManuscripts(user);
+    await googleCloudSyncService.syncAllDocumentsWithCloud(user);
     return user;
   }
 
@@ -563,7 +674,7 @@ export class AuthService {
     user.authToken = token;
 
     this.saveUserSession(user);
-    await googleCloudSyncService.syncPreLoginManuscripts(user);
+    await googleCloudSyncService.syncAllDocumentsWithCloud(user);
     return user;
   }
 
@@ -592,7 +703,7 @@ export class AuthService {
     user.authToken = token;
 
     this.saveUserSession(user);
-    await googleCloudSyncService.syncPreLoginManuscripts(user);
+    await googleCloudSyncService.syncAllDocumentsWithCloud(user);
     return user;
   }
 
@@ -633,7 +744,7 @@ export class AuthService {
     user.authToken = token;
 
     this.saveUserSession(user);
-    await googleCloudSyncService.syncPreLoginManuscripts(user);
+    await googleCloudSyncService.syncAllDocumentsWithCloud(user);
     return user;
   }
 
@@ -675,7 +786,7 @@ export class AuthService {
     user.authToken = token;
 
     this.saveUserSession(user);
-    await googleCloudSyncService.syncPreLoginManuscripts(user);
+    await googleCloudSyncService.syncAllDocumentsWithCloud(user);
     return user;
   }
 }

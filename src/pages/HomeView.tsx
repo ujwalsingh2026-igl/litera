@@ -90,6 +90,15 @@ export const HomeView: React.FC = () => {
 
   useEffect(() => {
     loadDashboardData();
+
+    const handleDocsUpdated = () => {
+      loadDashboardData();
+    };
+
+    window.addEventListener('literia:documents-updated', handleDocsUpdated);
+    return () => {
+      window.removeEventListener('literia:documents-updated', handleDocsUpdated);
+    };
   }, []);
 
   const handleToggleFav = async (e: React.MouseEvent, docId: string) => {

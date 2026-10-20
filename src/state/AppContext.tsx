@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, type ReactNode }
 import type { Document, Settings } from '../types';
 import { initializeStorage, DEFAULT_SETTINGS, db } from '../storage';
 import { documentService } from '../services/documentService';
+import { googleCloudSyncService } from '../services/googleCloudSyncService';
 import { applyThemeToDOM } from '../theme';
 
 export type AppView =
@@ -107,6 +108,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         applyThemeToDOM(DEFAULT_SETTINGS.appearance);
       }
       setIsStorageReady(true);
+
+      // Automatic background cloud sync on app launch across all author devices
+      try {
+        const rawAuth = localStorage.getItem('literia_auth_session');
+        if (rawAuth) {
+          const authData = JSON.parse(rawAuth);
+          if (authData.user && authData.user.provider !== 'guest') {
+            googleCloudSyncService.syncAllDocumentsWithCloud(authData.user).catch((e) => {
+              console.warn('[Literia Startup] Cloud sync notice:', e);
+            });
+          }
+        }
+      } catch {}
     }
     setup();
   }, []);

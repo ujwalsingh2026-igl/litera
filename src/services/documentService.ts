@@ -2,11 +2,24 @@ import { db } from '../storage/db';
 import type { Document, DocumentType } from '../types';
 import { generateSafeId } from '../utils/security';
 import { activityService } from './activityService';
+import { googleCloudSyncService } from './googleCloudSyncService';
 import {
   getDocumentTypeTemplate,
   getDefaultMetadataForType,
   calculateEnhancedStats,
 } from '../editor/documentTemplates';
+
+function notifyCloudSync(docId: string) {
+  try {
+    const raw = localStorage.getItem('literia_auth_session');
+    if (raw) {
+      const authData = JSON.parse(raw);
+      if (authData.user && authData.user.provider !== 'guest') {
+        googleCloudSyncService.queueOrSyncDocument(docId, authData.user);
+      }
+    }
+  } catch {}
+}
 
 export const documentService = {
   async getAll(): Promise<Document[]> {
@@ -57,6 +70,7 @@ export const documentService = {
 
     await db.documents.add(newDoc);
     await activityService.log('created', newDoc.id, newDoc.title, 'document');
+    notifyCloudSync(newDoc.id);
     return newDoc;
   },
 
@@ -76,6 +90,8 @@ export const documentService = {
       metadata,
       updatedAt: Date.now(),
     });
+
+    notifyCloudSync(id);
 
     if (updates.title && updates.title !== existing.title) {
       await activityService.log('renamed', id, updates.title, 'document');
@@ -156,6 +172,7 @@ export const documentService = {
       updatedAt: Date.now(),
     });
     await activityService.log('deleted', id, existing.title, 'document');
+    notifyCloudSync(id);
   },
 
   /* Bulk operations */
