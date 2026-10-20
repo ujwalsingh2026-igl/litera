@@ -13,7 +13,6 @@ const SUPPORTED_GEMINI_MODELS = [
   'gemini-2.0-flash',
   'gemini-1.5-flash',
   'gemini-1.5-pro',
-  'gemini-2.5-flash',
 ];
 
 export const aiService = {
@@ -169,6 +168,24 @@ Current Manuscript Excerpt:
   },
 
   /**
+   * Cleans an AI response so that only pure, elegant literary prose is inserted into the manuscript,
+   * stripping out markdown meta-headers, editorial notes, tips, and warnings.
+   */
+  cleanProseForInsertion(text: string): string {
+    return text
+      .replace(/^⚠️.*?\n/gm, '')
+      .replace(/###\s+[^\n]+/g, '')
+      .replace(/>\s+\*\*(Literary Suggestion|Subtext Tip|Prose Addition):\*\*.*$/gm, '')
+      .replace(/^\*Tip:.*?\*$/gm, '')
+      .replace(/^\*In relation to.*?\*$/gm, '')
+      .replace(/^[0-9]+\.\s+\*\*Atmospheric Texture:\*\*.*$/gm, '')
+      .replace(/^[0-9]+\.\s+\*\*Sentence Rhythm:\*\*.*$/gm, '')
+      .replace(/\*\*/g, '')
+      .replace(/^>\s*/gm, '')
+      .trim();
+  },
+
+  /**
    * Dynamic, context-aware offline literary creative engine.
    * Generates rich prose, scene extensions, dialogue, character sheets, and critiques.
    */
@@ -195,7 +212,28 @@ ${wordCount > 0 ? `I've analyzed your current draft (**${wordCount} words**).` :
 *Type any request above, or enter your Google Gemini API key to activate cloud neural models.*`;
     }
 
-    // 2. Expand / Continue Scene
+    // 2. Poem & Verse Generation
+    if (promptLower.includes('poem') || promptLower.includes('poetry') || promptLower.includes('verse') || promptLower.includes('stanza') || promptLower.includes('rhyme') || promptLower.includes('haiku') || promptLower.includes('sonnet')) {
+      const topic = userPrompt.replace(/(write|compose|create|make|a|poem|poetry|about|for|me|verse)/gi, '').trim() || 'the quiet passage of time';
+      return `### 🪶 Stanza for ${topic}
+
+The shadows lengthen on the ancient stone,
+Where silent thoughts and spoken words collide;
+A traveler stands upon the crest alone,
+With all the secrets that the heart would hide.
+
+The lanterns flicker in the twilight chill,
+As dusk descends across the sleeping shore;
+The ink remains upon the parchment still,
+To breathe the memories of nevermore.
+
+A solitary lantern gleams afar,
+To kindle dreams the quiet earth forgot;
+We steer our vessel by a steadfast star,
+And claim the destiny the fates allot.`;
+    }
+
+    // 3. Expand / Continue Scene
     if (promptLower.includes('expand') || promptLower.includes('continue') || promptLower.includes('write next') || promptLower.includes('more')) {
       const sceneStarter = excerpt
         ? `Building directly from your last lines (*"...${excerpt.slice(-120)}"*):`
@@ -212,7 +250,7 @@ A shadow shifted near the corridor archway—subtle, barely more than an alterat
 > **Literary Suggestion:** Notice how the rhythm alternates between short, sensory observations and longer rhythmic sentences. You can insert this straight into your chapter.`;
     }
 
-    // 3. Dialogue Generation
+    // 4. Dialogue Generation
     if (promptLower.includes('dialogue') || promptLower.includes('conversation') || promptLower.includes('talk')) {
       return `### 💬 Dramatic Dialogue Beat
 
@@ -229,7 +267,7 @@ She held his gaze for three long heartbeats, then let her breath out slowly. "I 
 > **Subtext Tip:** Great dialogue works through deflection—notice neither character directly answers the other's question; each raises the stakes.`;
     }
 
-    // 4. Character Development
+    // 5. Character Development
     if (promptLower.includes('character') || promptLower.includes('protagonist') || promptLower.includes('antagonist') || promptLower.includes('bio')) {
       return `### 🎭 Comprehensive Character Blueprint
 
@@ -243,7 +281,7 @@ She held his gaze for three long heartbeats, then let her breath out slowly. "I 
 - **Sensory Presence:** Smells of sandalwood and clove oil; speaks in measured, low baritone cadences that command silence without raising volume.`;
     }
 
-    // 5. Plot Twists & Narrative Turns
+    // 6. Plot Twists & Narrative Turns
     if (promptLower.includes('twist') || promptLower.includes('plot') || promptLower.includes('mystery') || promptLower.includes('climax')) {
       return `### ⚡ 3 High-Stakes Plot Twists for Your Story
 
@@ -257,7 +295,7 @@ She held his gaze for three long heartbeats, then let her breath out slowly. "I 
    The cure/relic they cross half the continent to retrieve requires the deliberate sacrifice of the one person whose survival was the entire reason for the journey.`;
     }
 
-    // 6. Critique & Manuscript Feedback
+    // 7. Critique & Manuscript Feedback
     if (promptLower.includes('critique') || promptLower.includes('feedback') || promptLower.includes('review') || promptLower.includes('analyze') || promptLower.includes('rate')) {
       if (!manuscriptContext || wordCount < 10) {
         return `### 🔍 Manuscript Review
@@ -284,22 +322,16 @@ Please write or paste an excerpt into your document first! I will then analyze y
   Heighten sensory contrast—introduce sound or temperature (e.g., the chill of air seeping beneath a door or the creak of floorboards) to make the physical setting three-dimensional.`;
     }
 
-    // 7. General Creative Response
-    return `### ✨ Creative Insight & Literary Expansion
+    // 8. General Creative Response & Prose Generation
+    const cleanPrompt = userPrompt.replace(/^(write|generate|tell me|create|give me|draft)\s+/i, '');
+    return `### ✨ Prose Generation: ${cleanPrompt}
 
-Regarding **"${userPrompt}"**:
+The morning light arrived with hesitation, filtering through fractured shutters to lay pale rectangles across the floorboards. In the stillness before the city awoke, every minor detail took on the deliberate weight of ceremony. A kettle hummed upon the iron stove, its steam curling in translucent spirals toward the rafters.
 
-${excerpt ? `*In relation to your draft's context:*` : ''}
+Beyond the window, mist clung to the rooftops like unspun wool. For months the question had lingered unanswered, buried beneath the routine of daily labor. Yet now, with the hour approaching, the necessity of action could no longer be deferred. What had begun as a quiet suspicion was rapidly hardening into an irreversible certainty.
 
-1. **Atmospheric Texture:** 
-   Ground the moment in tactile physics. Instead of describing an abstract emotion, anchor it to a concrete physical action—the tightness in the throat, the cold bite of iron, or the sudden glare of midday sun on white paper.
+He reached for the leather-bound ledger once more. The ink had long faded into dull charcoal, but the names written there remained as sharp as needles upon the eye. To close the book would be peace; to turn the page would be war.
 
-2. **Sentence Rhythm:**
-   Vary your syntax. Use a flowing, descriptive clause to paint the setting, followed by a sharp, monosyllabic verb when the action shifts.
-
-3. **Suggested Prose Addition:**
-   > *"He looked at the open ledger again. The ink had long faded into dull charcoal, but the names written there remained as sharp as needles."*
-
-*Tip: You can click "Insert into Manuscript" to add these lines directly into your text.*`;
+> **Literary Suggestion:** This passage is crafted with vivid sensory pacing and atmospheric contrast. You can click "Insert into Manuscript" below to add it directly to your text.`;
   },
 };

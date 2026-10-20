@@ -17,6 +17,7 @@ import {
 import { aiService } from '../../services/aiService';
 import { documentService } from '../../services/documentService';
 import { useApp } from '../../state';
+import { useToast } from '../ui/Toast';
 
 interface GlobalAiModalProps {
   isOpen: boolean;
@@ -24,7 +25,8 @@ interface GlobalAiModalProps {
 }
 
 export const GlobalAiModal: React.FC<GlobalAiModalProps> = ({ isOpen, onClose }) => {
-  const { activeDocument } = useApp();
+  const { activeDocument, setActiveDocument, openDocument, setCurrentView } = useApp();
+  const toast = useToast();
   const [prompt, setPrompt] = useState('');
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
@@ -66,7 +68,8 @@ export const GlobalAiModal: React.FC<GlobalAiModalProps> = ({ isOpen, onClose })
     try {
       const res = await aiService.queryGeminiOrLocal(
         textToRun,
-        activeDocument?.content || ''
+        activeDocument?.content || '',
+        apiKeyInput.trim()
       );
       setResponse(res);
     } finally {
@@ -75,10 +78,36 @@ export const GlobalAiModal: React.FC<GlobalAiModalProps> = ({ isOpen, onClose })
   };
 
   const handleInsertIntoManuscript = async () => {
-    if (!activeDocument || !response) return;
-    const cleanText = response.replace(/\*\*/g, '');
-    const updatedHtml = `${activeDocument.content || ''}<p>${cleanText.replace(/\n/g, '<br/>')}</p>`;
-    await documentService.update(activeDocument.id, { content: updatedHtml });
+    if (!response) return;
+    const cleanText = aiService.cleanProseForInsertion(response);
+    const paragraphs = cleanText.split(/\n\s*\n/).filter(Boolean);
+    const formattedHtml = paragraphs.map((p) => `<p>${p.replace(/\n/g, '<br/>')}</p>`).join('');
+
+    // 1. Dispatch custom event for currently mounted LiteriaEditor instance
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('literia:insert-content', {
+          detail: {
+            html: formattedHtml,
+            text: cleanText,
+          },
+        })
+      );
+    }
+
+    // 2. Persist to active document or create a new draft if none active
+    if (activeDocument) {
+      const updatedHtml = `${activeDocument.content || ''}${formattedHtml}`;
+      await documentService.update(activeDocument.id, { content: updatedHtml });
+      setActiveDocument({ ...activeDocument, content: updatedHtml });
+    } else {
+      const newDoc = await documentService.create('AI Companion Draft', 'draft', formattedHtml);
+      setActiveDocument(newDoc);
+      openDocument(newDoc.id);
+      setCurrentView('document');
+    }
+
+    toast.success('✓ Prose inserted into manuscript!');
     onClose();
   };
 

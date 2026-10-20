@@ -16,6 +16,7 @@ import {
 import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { useApp } from '../state';
+import { useToast } from '../components/ui/Toast';
 import { documentService } from '../services/documentService';
 import { aiService } from '../services/aiService';
 
@@ -27,7 +28,8 @@ interface Message {
 }
 
 export const AIPlaceholder: React.FC = () => {
-  const { activeDocument, openDocument } = useApp();
+  const { activeDocument, setActiveDocument, openDocument, setCurrentView } = useApp();
+  const toast = useToast();
   const [prompt, setPrompt] = useState('');
   const [apiKey, setApiKey] = useState(aiService.getStoredApiKey());
   const [showKeyInput, setShowKeyInput] = useState(false);
@@ -115,11 +117,35 @@ export const AIPlaceholder: React.FC = () => {
   };
 
   const handleInsertIntoManuscript = async (text: string) => {
-    if (!activeDocument) return;
-    const cleanText = text.replace(/\*\*/g, '').replace(/###/g, '');
-    const updatedHtml = `${activeDocument.content || ''}<p>${cleanText.replace(/\n/g, '<br/>')}</p>`;
-    await documentService.update(activeDocument.id, { content: updatedHtml });
-    openDocument(activeDocument.id);
+    const cleanText = aiService.cleanProseForInsertion(text);
+    const paragraphs = cleanText.split(/\n\s*\n/).filter(Boolean);
+    const formattedHtml = paragraphs.map((p) => `<p>${p.replace(/\n/g, '<br/>')}</p>`).join('');
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('literia:insert-content', {
+          detail: {
+            html: formattedHtml,
+            text: cleanText,
+          },
+        })
+      );
+    }
+
+    if (activeDocument) {
+      const updatedHtml = `${activeDocument.content || ''}${formattedHtml}`;
+      await documentService.update(activeDocument.id, { content: updatedHtml });
+      setActiveDocument({ ...activeDocument, content: updatedHtml });
+      await openDocument(activeDocument.id);
+      setCurrentView('document');
+    } else {
+      const newDoc = await documentService.create('AI Companion Story', 'story', formattedHtml);
+      setActiveDocument(newDoc);
+      await openDocument(newDoc.id);
+      setCurrentView('document');
+    }
+
+    toast.success('✓ Prose successfully inserted into manuscript!');
   };
 
   return (

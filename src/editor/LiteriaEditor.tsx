@@ -16,6 +16,7 @@ import { AuthorSignatureModal } from '../components/signature/AuthorSignatureMod
 import { DrawingStudioModal } from '../components/drawing/DrawingStudioModal';
 import { TemplateDesignerModal } from '../components/templates/TemplateDesignerModal';
 import { GlobalAiModal } from '../components/ai/GlobalAiModal';
+import { OnlineImageSeekerModal } from '../components/media/OnlineImageSeekerModal';
 import { LiveCollabModal } from '../components/collab/LiveCollabModal';
 import { realtimeCollabService } from '../services/realtimeCollabService';
 import { useAuth } from '../auth';
@@ -55,6 +56,7 @@ export const LiteriaEditor: React.FC = () => {
   const [signatureModalOpen, setSignatureModalOpen] = useState(false);
   const [drawingModalOpen, setDrawingModalOpen] = useState(false);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [imageSeekerOpen, setImageSeekerOpen] = useState(false);
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const [bookChapters, setBookChapters] = useState<Chapter[]>([]);
   const [parentBook, setParentBook] = useState<Book | null>(null);
@@ -353,6 +355,48 @@ export const LiteriaEditor: React.FC = () => {
     };
   }, [editor, doc, hasUnsaved]);
 
+  // Direct insertion listener for AI Companion prose or external text
+  useEffect(() => {
+    const handleInsertContent = (event: Event) => {
+      const customEvent = event as CustomEvent<{ html?: string; text?: string }>;
+      const htmlToInsert = customEvent.detail?.html;
+      const textToInsert = customEvent.detail?.text;
+      if (!editor || (!htmlToInsert && !textToInsert)) return;
+
+      const payload = htmlToInsert || `<p>${textToInsert}</p>`;
+      editor.chain().focus().insertContent(payload).run();
+
+      // Immediately synchronize and persist
+      const updatedHtml = editor.getHTML();
+      const updatedText = editor.getText();
+      const docId = currentDocIdRef.current;
+      if (docId) {
+        latestDraftRef.current = {
+          id: docId,
+          html: updatedHtml,
+          text: updatedText,
+        };
+        try {
+          localStorage.setItem(`literia_snapshot_${docId}`, updatedHtml);
+          localStorage.setItem(`literia_snapshot_time_${docId}`, String(Date.now()));
+        } catch {}
+
+        documentService.update(docId, {
+          content: updatedHtml,
+          plainTextPreview: updatedText.slice(0, 160),
+        }).catch(console.error);
+
+        // Notify collab room
+        realtimeCollabService.broadcastEdit(docId, updatedHtml, title);
+      }
+    };
+
+    window.addEventListener('literia:insert-content', handleInsertContent as EventListener);
+    return () => {
+      window.removeEventListener('literia:insert-content', handleInsertContent as EventListener);
+    };
+  }, [editor, title]);
+
   // Real-time peer editing listener and presence sync
   useEffect(() => {
     const unsubContent = realtimeCollabService.onContent((remoteHtml, _senderName, remoteTitle) => {
@@ -551,6 +595,7 @@ export const LiteriaEditor: React.FC = () => {
             onOpenTemplate={() => setTemplateModalOpen(true)}
             onOpenAi={() => setAiModalOpen(true)}
             onOpenCollab={() => setCollabModalOpen(true)}
+            onOpenImageSeeker={() => setImageSeekerOpen(true)}
             isCollabActive={isCollabActive}
             collabCount={collabCount}
           />
@@ -724,6 +769,7 @@ export const LiteriaEditor: React.FC = () => {
         onOpenTemplate={() => setTemplateModalOpen(true)}
         onToggleFindReplace={() => setFindReplaceOpen((prev) => !prev)}
         onOpenCollab={() => setCollabModalOpen(true)}
+        onOpenImageSeeker={() => setImageSeekerOpen(true)}
         isCollabActive={isCollabActive}
         collabCount={collabCount}
       />
@@ -773,6 +819,16 @@ export const LiteriaEditor: React.FC = () => {
       <GlobalAiModal
         isOpen={aiModalOpen}
         onClose={() => setAiModalOpen(false)}
+      />
+
+      <OnlineImageSeekerModal
+        isOpen={imageSeekerOpen}
+        onClose={() => setImageSeekerOpen(false)}
+        onInsertImage={(url, caption) => {
+          if (editor) {
+            editor.chain().focus().setImage({ src: url, alt: caption || 'Manuscript illustration' }).run();
+          }
+        }}
       />
     </div>
   );

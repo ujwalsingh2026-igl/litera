@@ -28,8 +28,10 @@ import {
   LayoutTemplate,
   Sparkles,
   Users,
+  CaseSensitive,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
+import { transformTipTapCase } from './caseTransform';
 
 interface EditorToolbarProps {
   editor: Editor | null;
@@ -40,6 +42,7 @@ interface EditorToolbarProps {
   onOpenTemplate?: () => void;
   onOpenAi?: () => void;
   onOpenCollab?: () => void;
+  onOpenImageSeeker?: () => void;
   isCollabActive?: boolean;
   collabCount?: number;
   className?: string;
@@ -56,11 +59,13 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   onOpenTemplate,
   onOpenAi,
   onOpenCollab,
+  onOpenImageSeeker,
   isCollabActive = false,
   collabCount = 1,
   className = '',
 }) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showCaseMenu, setShowCaseMenu] = useState(false);
 
   if (!editor) return null;
 
@@ -76,9 +81,13 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   };
 
   const addImage = () => {
-    const url = window.prompt('Enter Image URL:');
-    if (url) {
-      safeChain(editor).setImage({ src: url }).run();
+    if (onOpenImageSeeker) {
+      onOpenImageSeeker();
+    } else {
+      const url = window.prompt('Enter Image URL:');
+      if (url) {
+        safeChain(editor).setImage({ src: url }).run();
+      }
     }
   };
 
@@ -252,6 +261,90 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
                   className="w-5 h-5 rounded-full border border-stone-200 dark:border-stone-700 hover:scale-110 transition"
                 />
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* Text Case Transformation Dropdown */}
+        <div className="relative inline-block">
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setShowCaseMenu((prev) => !prev);
+              setShowColorPicker(false);
+            }}
+            className="p-1.5 rounded-md hover:bg-stone-100 dark:hover:bg-stone-800 transition flex items-center gap-0.5"
+            title="Change Text Case (Uppercase, Lowercase, Sentence case, Title Case)"
+          >
+            <CaseSensitive className="w-4 h-4 text-stone-700 dark:text-stone-300" />
+            <span className="text-[10px] font-mono font-bold text-stone-500">Aa</span>
+          </button>
+          {showCaseMenu && (
+            <div className="absolute top-full mt-1.5 left-0 p-1.5 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl shadow-2xl flex flex-col gap-1 z-[500] min-w-[210px] text-xs">
+              <div className="px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider text-stone-400 border-b border-stone-100 dark:border-stone-800">
+                Text Case Handling
+              </div>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  transformTipTapCase(editor, 'sentence');
+                  setShowCaseMenu(false);
+                }}
+                className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 text-left flex items-center justify-between transition"
+              >
+                <span className="font-medium text-stone-800 dark:text-stone-200">Sentence case</span>
+                <span className="text-[10px] text-stone-400">Capitalize sentences</span>
+              </button>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  transformTipTapCase(editor, 'title');
+                  setShowCaseMenu(false);
+                }}
+                className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 text-left flex items-center justify-between transition"
+              >
+                <span className="font-medium text-stone-800 dark:text-stone-200">Title Case</span>
+                <span className="text-[10px] text-stone-400">Capitalize Words</span>
+              </button>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  transformTipTapCase(editor, 'uppercase');
+                  setShowCaseMenu(false);
+                }}
+                className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 text-left flex items-center justify-between transition"
+              >
+                <span className="font-bold text-stone-800 dark:text-stone-200">UPPERCASE</span>
+                <span className="text-[10px] font-mono text-stone-400 font-bold">ALL CAPS</span>
+              </button>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  transformTipTapCase(editor, 'lowercase');
+                  setShowCaseMenu(false);
+                }}
+                className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 text-left flex items-center justify-between transition"
+              >
+                <span className="font-medium text-stone-800 dark:text-stone-200">lowercase</span>
+                <span className="text-[10px] font-mono text-stone-400">all lower</span>
+              </button>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  transformTipTapCase(editor, 'toggle');
+                  setShowCaseMenu(false);
+                }}
+                className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-stone-800 text-left flex items-center justify-between transition"
+              >
+                <span className="font-medium text-stone-800 dark:text-stone-200">tOGGLE cASE</span>
+                <span className="text-[10px] font-mono text-stone-400">iNVERT</span>
+              </button>
             </div>
           )}
         </div>

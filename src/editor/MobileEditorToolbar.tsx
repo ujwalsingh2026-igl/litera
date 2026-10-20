@@ -22,8 +22,10 @@ import {
   LayoutTemplate,
   Search,
   Users,
+  CaseSensitive,
 } from 'lucide-react';
 import { BottomSheet } from '../components/ui';
+import { transformTipTapCase } from './caseTransform';
 
 interface MobileEditorToolbarProps {
   editor: Editor | null;
@@ -35,6 +37,7 @@ interface MobileEditorToolbarProps {
   onOpenTemplate?: () => void;
   onToggleFindReplace?: () => void;
   onOpenCollab?: () => void;
+  onOpenImageSeeker?: () => void;
   isCollabActive?: boolean;
   collabCount?: number;
 }
@@ -51,6 +54,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
   onOpenTemplate,
   onToggleFindReplace,
   onOpenCollab,
+  onOpenImageSeeker,
   isCollabActive = false,
   collabCount = 1,
 }) => {
@@ -226,6 +230,59 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
             </div>
           </div>
 
+          {/* Case Transformation Section */}
+          <div>
+            <div className="font-semibold text-stone-400 uppercase text-[10px] mb-2 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <CaseSensitive className="w-3.5 h-3.5 text-amber-500" />
+                <span>Text Case Handling</span>
+              </span>
+              <span className="text-[10px] lowercase font-mono">Aa</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => {
+                  transformTipTapCase(editor, 'sentence');
+                  setSheetOpen(false);
+                }}
+                className="p-2 rounded-lg border border-stone-200 dark:border-stone-700 text-left flex flex-col gap-0.5 hover:bg-stone-50 dark:hover:bg-stone-800 transition"
+              >
+                <span className="font-semibold text-xs text-stone-800 dark:text-stone-200">Sentence case</span>
+                <span className="text-[10px] text-stone-400">Capitalize sentences</span>
+              </button>
+              <button
+                onClick={() => {
+                  transformTipTapCase(editor, 'title');
+                  setSheetOpen(false);
+                }}
+                className="p-2 rounded-lg border border-stone-200 dark:border-stone-700 text-left flex flex-col gap-0.5 hover:bg-stone-50 dark:hover:bg-stone-800 transition"
+              >
+                <span className="font-semibold text-xs text-stone-800 dark:text-stone-200">Title Case</span>
+                <span className="text-[10px] text-stone-400">Capitalize words</span>
+              </button>
+              <button
+                onClick={() => {
+                  transformTipTapCase(editor, 'uppercase');
+                  setSheetOpen(false);
+                }}
+                className="p-2 rounded-lg border border-stone-200 dark:border-stone-700 text-left flex flex-col gap-0.5 hover:bg-stone-50 dark:hover:bg-stone-800 transition"
+              >
+                <span className="font-bold text-xs text-stone-800 dark:text-stone-200">UPPERCASE</span>
+                <span className="text-[10px] text-stone-400 font-mono font-bold">ALL CAPS</span>
+              </button>
+              <button
+                onClick={() => {
+                  transformTipTapCase(editor, 'lowercase');
+                  setSheetOpen(false);
+                }}
+                className="p-2 rounded-lg border border-stone-200 dark:border-stone-700 text-left flex flex-col gap-0.5 hover:bg-stone-50 dark:hover:bg-stone-800 transition"
+              >
+                <span className="font-semibold text-xs text-stone-800 dark:text-stone-200">lowercase</span>
+                <span className="text-[10px] text-stone-400 font-mono">all lower</span>
+              </button>
+            </div>
+          </div>
+
           <div>
             <div className="font-semibold text-stone-400 uppercase text-[10px] mb-2">Insert Elements</div>
             <div className="grid grid-cols-3 gap-2">
@@ -242,9 +299,13 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
               </button>
               <button
                 onClick={() => {
-                  const url = window.prompt('Enter image URL:');
-                  if (url) safeChain(editor).setImage({ src: url }).run();
                   setSheetOpen(false);
+                  if (onOpenImageSeeker) {
+                    onOpenImageSeeker();
+                  } else {
+                    const url = window.prompt('Enter image URL:');
+                    if (url) safeChain(editor).setImage({ src: url }).run();
+                  }
                 }}
                 className="p-2.5 rounded-lg border border-stone-200 dark:border-stone-700 flex items-center justify-center gap-1.5"
               >
