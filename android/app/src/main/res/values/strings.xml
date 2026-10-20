@@ -4,4 +4,5 @@
     <string name="title_activity_main">LITERIA</string>
     <string name="package_name">com.literia.app</string>
     <string name="custom_url_scheme">com.literia.app</string>
+    <string name="default_web_client_id">754852471988-qqe5a453mdpf2avm8mqmggjmsroao87e.apps.googleusercontent.com</string>
 </resources>

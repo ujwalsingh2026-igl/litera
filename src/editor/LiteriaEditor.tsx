@@ -65,6 +65,8 @@ export const LiteriaEditor: React.FC = () => {
 
   const saveTimeoutRef = useRef<number | null>(null);
   const currentDocIdRef = useRef<string | null>(activeDocument?.id || null);
+  const loadedDocIdRef = useRef<string | null>(null);
+  const latestDraftRef = useRef<{ id: string; html: string; text: string } | null>(null);
 
   // Sync chapters and book details when editing a book document
   useEffect(() => {
@@ -174,10 +176,16 @@ export const LiteriaEditor: React.FC = () => {
         }
       });
 
-      // Emergency snapshot in localStorage (crash-proofing)
+      // Emergency snapshot in localStorage (crash-proofing) & update latest draft ref
       if (currentDocIdRef.current) {
+        latestDraftRef.current = {
+          id: currentDocIdRef.current,
+          html,
+          text,
+        };
         try {
           localStorage.setItem(`literia_snapshot_${currentDocIdRef.current}`, html);
+          localStorage.setItem(`literia_snapshot_time_${currentDocIdRef.current}`, String(Date.now()));
         } catch {
           // ignore quota exceeded
         }
@@ -185,7 +193,7 @@ export const LiteriaEditor: React.FC = () => {
         realtimeCollabService.broadcastEdit(currentDocIdRef.current, html, title);
       }
 
-      // Debounced save to IndexedDB & Google Cloud Vault
+      // Fast debounced save to IndexedDB & Google Cloud Vault (400ms)
       if (saveTimeoutRef.current) {
         window.clearTimeout(saveTimeoutRef.current);
       }
@@ -209,20 +217,141 @@ export const LiteriaEditor: React.FC = () => {
         } finally {
           setIsSaving(false);
         }
-      }, 1200);
+      }, 400);
     },
   });
 
-  // Update editor content when active document ID changes
+  // Flush unsaved draft changes immediately (Exit-flush & Unmount protection)
+  const flushSave = useCallback(() => {
+    if (saveTimeoutRef.current) {
+      window.clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+
+    const currentDraft = latestDraftRef.current;
+    const docId = currentDraft?.id || currentDocIdRef.current;
+    if (!docId) return;
+
+    const html = currentDraft?.html || (editor ? editor.getHTML() : '');
+    const text = currentDraft?.text || (editor ? editor.getText() : '');
+
+    // Skip if completely empty without draft
+    if (!html && !text) return;
+
+    // Synchronously write to emergency crash snapshot
+    try {
+      localStorage.setItem(`literia_snapshot_${docId}`, html);
+      localStorage.setItem(`literia_snapshot_time_${docId}`, String(Date.now()));
+    } catch {}
+
+    // Flush directly to Dexie IndexedDB
+    documentService.update(docId, {
+      content: html,
+      plainTextPreview: text.slice(0, 160),
+    }).catch(console.error);
+
+    // Queue sync to Google Cloud Vault
+    try {
+      googleCloudSyncService.queueOrSyncDocument(docId, user);
+    } catch {}
+  }, [editor, user]);
+
+  // Attach immediate flush listeners to window unload, pagehide, and visibilitychange
   useEffect(() => {
-    if (editor && doc && doc.id !== currentDocIdRef.current) {
+    const handleBeforeUnload = () => {
+      flushSave();
+    };
+    const handlePageHide = () => {
+      flushSave();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushSave();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handlePageHide);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      // Flush immediately when leaving editor / unmounting
+      flushSave();
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handlePageHide);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [flushSave]);
+
+  // Update editor content whenever active document changes or editor is ready
+  useEffect(() => {
+    if (!editor || !doc) return;
+
+    if (loadedDocIdRef.current !== doc.id) {
+      loadedDocIdRef.current = doc.id;
       currentDocIdRef.current = doc.id;
+
       // Check emergency snapshot
       const snapshot = localStorage.getItem(`literia_snapshot_${doc.id}`);
-      const contentToLoad = snapshot || doc.content || '';
-      editor.commands.setContent(contentToLoad);
+      const snapshotTime = Number(localStorage.getItem(`literia_snapshot_time_${doc.id}`) || 0);
+      const snapshotText = snapshot ? snapshot.replace(/<[^>]+>/g, '').trim() : '';
+      const docText = (doc.content || '').replace(/<[^>]+>/g, '').trim();
+
+      // Determine best content:
+      // If snapshot exists and has text:
+      // - If doc has no text, use snapshot!
+      // - If snapshot is newer than doc.updatedAt, use snapshot!
+      // - If snapshot has more text than doc, use snapshot!
+      let contentToLoad = doc.content || '';
+      if (snapshotText.length > 0) {
+        if (docText.length === 0 || snapshotTime > (doc.updatedAt || 0) || snapshotText.length > docText.length) {
+          console.log(`[LiteriaEditor] Recovering latest draft from emergency snapshot for doc ${doc.id}`);
+          contentToLoad = snapshot!;
+          // Immediately update Dexie with the recovered content
+          documentService.update(doc.id, {
+            content: contentToLoad,
+            plainTextPreview: snapshotText.slice(0, 160),
+          }).catch(console.error);
+        }
+      }
+
+      editor.commands.setContent(contentToLoad, { emitUpdate: false });
+      latestDraftRef.current = {
+        id: doc.id,
+        html: contentToLoad,
+        text: contentToLoad.replace(/<[^>]+>/g, ' '),
+      };
+      setHasUnsaved(false);
     }
   }, [doc, editor]);
+
+  // Listen for remote document updates from Cloud Sync
+  useEffect(() => {
+    const handleDocumentSync = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ documentId?: string; doc?: Document }>;
+      const updatedId = customEvent.detail?.documentId;
+      if (updatedId && doc && updatedId === doc.id) {
+        const fresh = customEvent.detail?.doc || (await documentService.getById(updatedId));
+        if (fresh && fresh.content) {
+          const currentText = editor?.getText().trim() || '';
+          if (editor && (!hasUnsaved || currentText.length === 0)) {
+            editor.commands.setContent(fresh.content, { emitUpdate: false });
+            setDoc(fresh);
+            setTitle(fresh.title);
+            setStats(fresh.stats);
+            setHasUnsaved(false);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('literia:document-updated', handleDocumentSync as EventListener);
+    window.addEventListener('literia:documents-updated', handleDocumentSync as EventListener);
+    return () => {
+      window.removeEventListener('literia:document-updated', handleDocumentSync as EventListener);
+      window.removeEventListener('literia:documents-updated', handleDocumentSync as EventListener);
+    };
+  }, [editor, doc, hasUnsaved]);
 
   // Real-time peer editing listener and presence sync
   useEffect(() => {

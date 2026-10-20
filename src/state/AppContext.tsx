@@ -111,11 +111,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       // Automatic background cloud sync on app launch across all author devices
       try {
-        const rawAuth = localStorage.getItem('literia_auth_session');
+        const rawAuth = localStorage.getItem('literia_auth_user') || localStorage.getItem('literia_auth_session');
         if (rawAuth) {
           const authData = JSON.parse(rawAuth);
-          if (authData.user && authData.user.provider !== 'guest') {
-            googleCloudSyncService.syncAllDocumentsWithCloud(authData.user).catch((e) => {
+          const u = authData.user || authData;
+          if (u && u.provider !== 'guest') {
+            googleCloudSyncService.syncAllDocumentsWithCloud(u).catch((e) => {
               console.warn('[Literia Startup] Cloud sync notice:', e);
             });
           }

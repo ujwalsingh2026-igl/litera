@@ -1,0 +1,156 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Application: Literia (Offline-first creative writing suite)
+// Root Path: /users/{uid}/documents/{docId}
+//
+// Assumed Data Structures:
+//
+// Collection: /users/{uid}/documents
+// Document ID: {docId} (matches data.documentId)
+//
+// Fields:
+//   - documentId: string (required, immutable, 1-128 chars, matches path {docId})
+//   - ownerUid: string (required, immutable, matches path {uid} and request.auth.uid)
+//   - schemaVersion: int (required, positive integer >= 1)
+//   - rev: int (required, revision counter >= 1, monotonic: rev >= resource.data.rev on update)
+//   - updatedAt: number or timestamp (required, epoch milliseconds or server timestamp)
+//   - createdAt: number or timestamp (required, epoch milliseconds or server timestamp; immutable unless tombstone)
+//   - isDeleted: bool (required, soft-deletion tombstone flag)
+//   - deviceId: string (required, 1-128 chars, originating client device identifier)
+//   - encryptedPayload: string (required, AES-GCM-256 base64 ciphertext, max 1MB (1,048,576 chars); non-empty when isDeleted == false)
+//   - iv: string (required, base64 96-bit initialization vector, max 64 chars; non-empty when isDeleted == false)
+//   - integritySignature: string (required, SHA-256 64-char hex string)
+//   - type: string (required, document classification, 1-50 chars)
+//   - wordCount: int (required, non-negative integer >= 0)
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Global Default Deny
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the request is from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the authenticated user is the designated owner
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // Validate that only permitted fields are present in the document
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Validate that all required schema fields exist in the document
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate that fields specified in the list have not changed during update
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // Validate timestamp or positive epoch milliseconds number
+    function isValidTimestampOrNumber(val) {
+      return (val is number && val > 0) || val is timestamp;
+    }
+
+    // ===============================================================
+    // Domain Validator: Literia Document Envelope
+    // (MANDATORY: Evaluated on BOTH create and update operations)
+    // ===============================================================
+    function isValidDocumentEnvelope(data, uid, docId) {
+      return hasOnlyAllowedFields([
+               'documentId', 'ownerUid', 'schemaVersion', 'rev',
+               'updatedAt', 'createdAt', 'isDeleted', 'deviceId',
+               'encryptedPayload', 'iv', 'integritySignature', 'type', 'wordCount'
+             ]) &&
+             hasRequiredFields([
+               'documentId', 'ownerUid', 'schemaVersion', 'rev',
+               'updatedAt', 'createdAt', 'isDeleted', 'deviceId',
+               'encryptedPayload', 'iv', 'integritySignature', 'type', 'wordCount'
+             ]) &&
+             // Document ID & Ownership Binding
+             data.documentId is string &&
+             data.documentId == docId &&
+             data.documentId.size() > 0 &&
+             data.documentId.size() <= 128 &&
+             data.ownerUid is string &&
+             data.ownerUid == uid &&
+             data.ownerUid == request.auth.uid &&
+             // Schema & Version Constraints
+             data.schemaVersion is int &&
+             data.schemaVersion >= 1 &&
+             data.schemaVersion <= 1000 &&
+             data.rev is int &&
+             data.rev >= 1 &&
+             // Timestamps (number epoch ms or timestamp)
+             isValidTimestampOrNumber(data.createdAt) &&
+             isValidTimestampOrNumber(data.updatedAt) &&
+             // Deletion Flag & Device Identity
+             data.isDeleted is bool &&
+             data.deviceId is string &&
+             data.deviceId.size() > 0 &&
+             data.deviceId.size() <= 128 &&
+             // Cryptographic Payload Bounds & Resource Exhaustion Protection (1MB limit)
+             data.encryptedPayload is string &&
+             data.encryptedPayload.size() <= 1048576 &&
+             data.iv is string &&
+             data.iv.size() <= 64 &&
+             (!data.isDeleted ? (data.encryptedPayload.size() > 0 && data.iv.size() > 0) : true) &&
+             data.integritySignature is string &&
+             data.integritySignature.size() == 64 &&
+             data.integritySignature.matches('^[0-9a-fA-F]{64}$') &&
+             // Metadata & Statistics
+             data.type is string &&
+             data.type.size() > 0 &&
+             data.type.size() <= 50 &&
+             data.wordCount is int &&
+             data.wordCount >= 0;
+    }
+
+    // ===============================================================
+    // Document Rules: /users/{uid}/documents/{docId}
+    // ===============================================================
+    match /users/{uid}/documents/{docId} {
+
+      // Read access: Strictly owner-only (supports both get() and collection list / query)
+      allow read: if isOwner(uid);
+
+      // Create access: Authenticated owner, strictly conforming to the document schema
+      allow create: if isOwner(uid) &&
+                       isValidDocumentEnvelope(request.resource.data, uid, docId);
+
+      // Update access: Authenticated owner, strictly conforming to the document schema,
+      // with immutable identity fields and non-decreasing revision counter
+      allow update: if isOwner(uid) &&
+                       isValidDocumentEnvelope(request.resource.data, uid, docId) &&
+                       areImmutableFieldsUnchanged(['documentId', 'ownerUid']) &&
+                       request.resource.data.documentId == resource.data.documentId &&
+                       request.resource.data.ownerUid == resource.data.ownerUid &&
+                       (request.resource.data.isDeleted == true || request.resource.data.createdAt == resource.data.createdAt) &&
+                       request.resource.data.rev >= resource.data.rev;
+
+      // Delete access: Authenticated owner can hard-delete document records
+      allow delete: if isOwner(uid);
+    }
+  }
+}

@@ -36,6 +36,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   initialProvider = 'google',
 }) => {
   const {
+    signInWithGoogleFirebase,
     loginWithGoogleRedirect,
     loginWithGoogle,
     registerIndividualAccount,
@@ -55,6 +56,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [literaHandle, setLiteraHandle] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -75,6 +77,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setSuccessMsg(null);
       setOtpSent(false);
       setOtpCode('');
+      setConfirmPassword('');
     }
   }, [isOpen, initialMode]);
 
@@ -92,6 +95,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     navigator.clipboard.writeText(redirectUri);
     setCopiedRedirectUri(true);
     setTimeout(() => setCopiedRedirectUri(false), 2000);
+  };
+
+  const handleFirebaseGoogleSignIn = async () => {
+    try {
+      setIsSubmitting(true);
+      setErrorMsg(null);
+      const user = await signInWithGoogleFirebase();
+      setSuccessMsg(
+        `✓ Authenticated via Google! Welcome ${user.displayName || user.email || 'Author'}. Cloud sync is active.`
+      );
+      setTimeout(() => {
+        onClose();
+      }, 700);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Google sign-in failed.';
+      if (
+        !message.includes('popup-closed-by-user') &&
+        !message.includes('cancelled') &&
+        !message.includes('canceled')
+      ) {
+        setErrorMsg(message);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleGoogleRedirectAuth = () => {
@@ -165,12 +193,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setErrorMsg('Please enter your email address.');
       return;
     }
+    if (!password || password.length < 6) {
+      setErrorMsg('Password must be at least 6 characters.');
+      return;
+    }
+    if (mode === 'signup' && confirmPassword && password !== confirmPassword) {
+      setErrorMsg('Passwords do not match. Please verify your password.');
+      return;
+    }
     try {
       setIsSubmitting(true);
       setErrorMsg(null);
       if (mode === 'signup') {
         await registerIndividualAccount(email.trim(), password, displayName.trim() || undefined);
-        setSuccessMsg('✓ Individual account registered! All manuscripts backed up to your cloud vault.');
+        setSuccessMsg('✓ Account registered successfully! Cloud vault is initialized.');
       } else {
         await loginWithGmail(email.trim(), password);
         setSuccessMsg('✓ Signed in successfully! Welcome back.');
@@ -179,7 +215,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         onClose();
       }, 800);
     } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Authentication failed.');
+      const msg = err instanceof Error ? err.message : 'Authentication failed.';
+      setErrorMsg(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -287,15 +324,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
           <div>
             <h2 className="font-serif text-xl font-bold text-stone-900 dark:text-stone-100">
-              {mode === 'signin' ? 'Access Portable Studio' : 'Create Portable Author Account'}
+              {mode === 'signin' ? 'Sign In to Studio' : 'Create New Account'}
             </h2>
             <p className="text-xs text-stone-500 dark:text-stone-400 mt-1 max-w-sm mx-auto">
-              Sync manuscripts seamlessly across desktop, laptop, mobile, and web.
+              {mode === 'signin'
+                ? 'Welcome back! Sign in to access your AES-256 encrypted documents.'
+                : 'Register a new author account to enable cross-device cloud synchronization.'}
             </p>
           </div>
 
-          {/* Sign In vs Sign Up Pills */}
-          <div className="inline-flex p-1 rounded-xl bg-stone-100 dark:bg-stone-800 text-xs font-medium mt-1">
+          {/* Two-Sided Tab Switcher: Sign In vs Create Account */}
+          <div className="inline-grid grid-cols-2 p-1 rounded-xl bg-stone-100 dark:bg-stone-800 text-xs font-semibold w-full max-w-xs mx-auto">
             <button
               type="button"
               onClick={() => {
@@ -303,13 +342,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 setErrorMsg(null);
               }}
               className={cn(
-                'px-4 py-1.5 rounded-lg transition-all',
+                'py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer',
                 mode === 'signin'
-                  ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-xs font-semibold'
+                  ? 'bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 shadow-xs font-bold ring-1 ring-stone-200 dark:ring-stone-700'
                   : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
               )}
             >
-              Sign In
+              <span>Sign In</span>
             </button>
             <button
               type="button"
@@ -318,13 +357,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 setErrorMsg(null);
               }}
               className={cn(
-                'px-4 py-1.5 rounded-lg transition-all',
+                'py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer',
                 mode === 'signup'
-                  ? 'bg-amber-600 text-white shadow-xs font-semibold'
+                  ? 'bg-amber-600 text-white shadow-xs font-bold'
                   : 'text-stone-500 hover:text-stone-800 dark:hover:text-stone-300'
               )}
             >
-              Sign Up
+              <span>Create Account</span>
             </button>
           </div>
         </div>
@@ -356,11 +395,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           })}
         </div>
 
-        {/* Error / Success Feedback */}
+        {/* Error / Success Feedback with Smart Mode Navigation */}
         {errorMsg && (
-          <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-            <span>{errorMsg}</span>
+          <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 text-rose-700 dark:text-rose-300 text-xs flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+              <span>{errorMsg}</span>
+            </div>
+            {errorMsg.toLowerCase().includes('no account') && mode === 'signin' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('signup');
+                  setErrorMsg(null);
+                }}
+                className="self-start text-[11px] font-bold underline text-amber-700 dark:text-amber-400 hover:text-amber-800 flex items-center gap-1 cursor-pointer"
+              >
+                <span>👉 Click here to switch to Create Account (Register)</span>
+              </button>
+            )}
+            {errorMsg.toLowerCase().includes('already exists') && mode === 'signup' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('signin');
+                  setErrorMsg(null);
+                }}
+                className="self-start text-[11px] font-bold underline text-amber-700 dark:text-amber-400 hover:text-amber-800 flex items-center gap-1 cursor-pointer"
+              >
+                <span>👉 Click here to switch to Sign In</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -388,11 +453,55 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-left space-y-1">
                 <div className="flex items-center gap-1.5 text-amber-800 dark:text-amber-300 font-semibold text-xs">
                   <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <span>Pre-Login Sync & Authorized Bearer Token</span>
+                  <span>Cloud Sync & Authorized Bearer Token</span>
                 </div>
                 <p className="text-[11px] text-stone-600 dark:text-stone-400 leading-relaxed">
-                  All manuscripts written before login are securely migrated and encrypted. Every authorized session receives a signed cryptographic Bearer token with full permission scopes.
+                  Sign in with your Google account to enable secure cloud sync across all your devices with AES-256 client-side encryption.
                 </p>
+              </div>
+
+              {/* Primary: Real Firebase Google Sign-in */}
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={handleFirebaseGoogleSignIn}
+                  disabled={isSubmitting}
+                  className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl bg-white hover:bg-stone-50 dark:bg-stone-800 dark:hover:bg-stone-750 text-stone-800 dark:text-stone-100 border border-stone-300 dark:border-stone-700 font-semibold shadow-xs transition-all text-sm active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.66v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.15z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.97 0 12c0 2.03.45 3.84 1.25 5.42l4.03-3.15z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                    />
+                  </svg>
+                  <span>
+                    {isSubmitting
+                      ? 'Authenticating with Google...'
+                      : mode === 'signup'
+                      ? 'Sign Up with Google (Create Account)'
+                      : 'Continue with Google (Sign In)'}
+                  </span>
+                </button>
+              </div>
+
+              {/* Divider */}
+              <div className="relative flex items-center justify-center my-2">
+                <div className="border-t border-stone-200 dark:border-stone-800 w-full" />
+                <span className="bg-white dark:bg-stone-900 px-3 text-[10px] text-stone-400 uppercase tracking-wider font-medium shrink-0">
+                  Or enter credentials manually
+                </span>
               </div>
 
               {/* Authorized Google Credentials Form (Authentication & Authorization) */}
@@ -569,18 +678,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           {/* 2. G-MAIL / INDIVIDUAL ACCOUNT */}
           {activeProvider === 'gmail' && (
             <form onSubmit={handleGmailAuth} className="space-y-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-stone-700 dark:text-stone-300">
-                  Email Address
-                </label>
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="author@gmail.com"
-                  required
-                  autoFocus
-                />
+              <div className="p-3 rounded-xl bg-stone-50 dark:bg-stone-800/50 border border-stone-200 dark:border-stone-700/50 text-left">
+                <span className="text-xs font-semibold text-stone-800 dark:text-stone-200 block">
+                  {mode === 'signup' ? 'New Author Registration' : 'Author Sign In'}
+                </span>
+                <p className="text-[11px] text-stone-500 leading-relaxed mt-0.5">
+                  {mode === 'signup'
+                    ? 'Create an account with your email and password to sync manuscripts across your phone and computer.'
+                    : 'Enter your registered email and password to unlock your cloud manuscripts.'}
+                </p>
               </div>
 
               {mode === 'signup' && (
@@ -599,16 +705,45 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
               <div className="space-y-1">
                 <label className="text-xs font-medium text-stone-700 dark:text-stone-300">
+                  Email Address
+                </label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="author@example.com"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-stone-700 dark:text-stone-300">
                   Password
                 </label>
                 <Input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
+                  placeholder="At least 6 characters"
                   required
                 />
               </div>
+
+              {mode === 'signup' && (
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-stone-700 dark:text-stone-300">
+                    Confirm Password
+                  </label>
+                  <Input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Repeat your password"
+                    required
+                  />
+                </div>
+              )}
 
               <Button
                 type="submit"
@@ -617,10 +752,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 className="w-full py-2.5 text-xs font-semibold"
               >
                 {isSubmitting
-                  ? 'Securing Account & Vault...'
-                  : mode === 'signin'
-                  ? 'Sign In to Individual Account'
-                  : 'Register Account & Sync Vault'}
+                  ? (mode === 'signup' ? 'Creating Account & Vault...' : 'Signing In...')
+                  : (mode === 'signup' ? 'Create Account & Sync Vault' : 'Sign In to Author Account')}
               </Button>
             </form>
           )}
@@ -806,6 +939,41 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 {isSubmitting ? 'Decrypting Vault...' : 'Unlock Vault with Secret Code'}
               </Button>
             </form>
+          )}
+        </div>
+
+        {/* Switch Mode Footer Action */}
+        <div className="pt-2 text-center text-xs text-stone-600 dark:text-stone-400 border-t border-stone-200/50 dark:border-stone-800/50">
+          {mode === 'signin' ? (
+            <p>
+              Don&apos;t have an account yet?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('signup');
+                  setErrorMsg(null);
+                }}
+                className="font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer inline-flex items-center gap-1"
+              >
+                <span>Create an Account (Register)</span>
+                <span>→</span>
+              </button>
+            </p>
+          ) : (
+            <p>
+              Already have an author account?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('signin');
+                  setErrorMsg(null);
+                }}
+                className="font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer inline-flex items-center gap-1"
+              >
+                <span>Sign In to your Account</span>
+                <span>→</span>
+              </button>
+            </p>
           )}
         </div>
 

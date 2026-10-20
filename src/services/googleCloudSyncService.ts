@@ -164,6 +164,24 @@ class GoogleCloudSyncService {
     return `literia_gcloud_vault_${userId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
   }
 
+  private uint8ToBase64(bytes: Uint8Array): string {
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  }
+
+  private base64ToUint8(base64: string): Uint8Array {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+  }
+
   /**
    * Derive a 256-bit cryptographic AES-GCM key unique to the user
    */
@@ -199,8 +217,8 @@ class GoogleCloudSyncService {
       encoded
     );
 
-    const cipherBase64 = btoa(String.fromCharCode(...new Uint8Array(encrypted)));
-    const ivBase64 = btoa(String.fromCharCode(...iv));
+    const cipherBase64 = this.uint8ToBase64(new Uint8Array(encrypted));
+    const ivBase64 = this.uint8ToBase64(iv);
 
     // Integrity hash (SHA-256)
     const digest = await crypto.subtle.digest('SHA-256', encoded);
@@ -212,27 +230,46 @@ class GoogleCloudSyncService {
   }
 
   /**
-   * Decrypt document batch from Google Cloud Vault
+   * Decrypt document batch from Google Cloud Vault with identity fallback
    */
   private async decryptPayload(
     encryptedData: string,
     ivBase64: string,
-    userId: string
+    userId: string,
+    fallbackId?: string
   ): Promise<Document[]> {
     try {
       const key = await this.getVaultCryptoKey(userId);
-      const iv = new Uint8Array(atob(ivBase64).split('').map((c) => c.charCodeAt(0)));
-      const cipherBytes = new Uint8Array(atob(encryptedData).split('').map((c) => c.charCodeAt(0)));
+      const iv = this.base64ToUint8(ivBase64);
+      const cipherBytes = this.base64ToUint8(encryptedData);
 
       const decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
+        { name: 'AES-GCM', iv: iv as unknown as BufferSource },
         key,
-        cipherBytes
+        cipherBytes as unknown as BufferSource
       );
 
       const jsonStr = new TextDecoder().decode(decrypted);
       return JSON.parse(jsonStr);
     } catch (e) {
+      if (fallbackId && fallbackId !== userId) {
+        try {
+          const keyFallback = await this.getVaultCryptoKey(fallbackId);
+          const iv = this.base64ToUint8(ivBase64);
+          const cipherBytes = this.base64ToUint8(encryptedData);
+
+          const decrypted = await crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv: iv as unknown as BufferSource },
+            keyFallback,
+            cipherBytes as unknown as BufferSource
+          );
+
+          const jsonStr = new TextDecoder().decode(decrypted);
+          return JSON.parse(jsonStr);
+        } catch {
+          // ignore fallback failure
+        }
+      }
       console.error('Failed to decrypt vault:', e);
       return [];
     }
@@ -283,9 +320,17 @@ class GoogleCloudSyncService {
         if (!existingCloud) {
           mergedMap.set(lDoc.id, lDoc);
         } else {
-          // Keep document with newer timestamp
-          if ((lDoc.updatedAt || 0) >= (existingCloud.updatedAt || 0)) {
+          const localHasText = Boolean(lDoc.content && lDoc.content.replace(/<[^>]+>/g, '').trim().length > 0);
+          const cloudHasText = Boolean(existingCloud.content && existingCloud.content.replace(/<[^>]+>/g, '').trim().length > 0);
+
+          if (!localHasText && cloudHasText) {
+            mergedMap.set(lDoc.id, existingCloud);
+          } else if (localHasText && !cloudHasText) {
             mergedMap.set(lDoc.id, lDoc);
+          } else if ((lDoc.updatedAt || 0) >= (existingCloud.updatedAt || 0)) {
+            mergedMap.set(lDoc.id, lDoc);
+          } else {
+            mergedMap.set(lDoc.id, existingCloud);
           }
         }
       }
@@ -449,12 +494,13 @@ class GoogleCloudSyncService {
     let userToSync = this.currentUser;
     if (!userToSync) {
       try {
-        const rawAuth = localStorage.getItem('literia_auth_session');
+        const rawAuth = localStorage.getItem('literia_auth_user') || localStorage.getItem('literia_auth_session');
         if (rawAuth) {
           const authData = JSON.parse(rawAuth);
-          if (authData.user && authData.user.provider !== 'guest') {
-            userToSync = authData.user;
-            this.currentUser = authData.user;
+          const u = authData.user || authData;
+          if (u && u.provider !== 'guest') {
+            userToSync = u;
+            this.currentUser = u;
           }
         }
       } catch (e) {
@@ -597,7 +643,7 @@ class GoogleCloudSyncService {
             if (jsonString) {
               const payload: CloudVaultPayload = JSON.parse(jsonString);
               if (payload && payload.encryptedData && payload.iv) {
-                const docs = await this.decryptPayload(payload.encryptedData, payload.iv, user.id);
+                const docs = await this.decryptPayload(payload.encryptedData, payload.iv, user.id, user.email);
                 if (docs && docs.length > 0) {
                   console.log(`[Literia Cloud] Restored ${docs.length} manuscripts from Cloud Vault!`);
                   return docs;
@@ -635,7 +681,7 @@ class GoogleCloudSyncService {
 
             if (fileRes.ok) {
               const payload: CloudVaultPayload = await fileRes.json();
-              return await this.decryptPayload(payload.encryptedData, payload.iv, user.id);
+              return await this.decryptPayload(payload.encryptedData, payload.iv, user.id, user.email);
             }
           }
         }
@@ -671,7 +717,7 @@ class GoogleCloudSyncService {
       if (!stored) return 0;
 
       const payload: CloudVaultPayload = JSON.parse(stored);
-      const docs = await this.decryptPayload(payload.encryptedData, payload.iv, user.id);
+      const docs = await this.decryptPayload(payload.encryptedData, payload.iv, user.id, user.email);
 
       if (docs && docs.length > 0) {
         await db.transaction('rw', db.documents, async () => {

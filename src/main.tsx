@@ -10,6 +10,10 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       .register('./sw.js')
       .then((reg) => {
         console.log('[Literia] Offline Service Worker registered:', reg.scope);
+        reg.update();
+        if (reg.waiting) {
+          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
       })
       .catch((err) => {
         console.log('[Literia] Service Worker registration note:', err);

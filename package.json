@@ -12,6 +12,7 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
+    "@capacitor-firebase/authentication": "^8.5.2",
     "@capacitor/android": "^8.5.2",
     "@capacitor/app": "^8.1.2",
     "@capacitor/cli": "^8.5.2",
@@ -35,6 +36,7 @@
     "@tiptap/starter-kit": "^3.31.4",
     "clsx": "^2.1.1",
     "dexie": "^4.4.6",
+    "firebase": "^12.19.0",
     "lucide-react": "^1.51.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

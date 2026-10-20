@@ -3,19 +3,36 @@ import type { Document, DocumentType } from '../types';
 import { generateSafeId } from '../utils/security';
 import { activityService } from './activityService';
 import { googleCloudSyncService } from './googleCloudSyncService';
+import { syncQueue } from '../sync/syncQueue';
+import { syncEngine } from '../sync/syncEngine';
 import {
   getDocumentTypeTemplate,
   getDefaultMetadataForType,
   calculateEnhancedStats,
 } from '../editor/documentTemplates';
 
-function notifyCloudSync(docId: string) {
+async function enqueueDocSync(
+  docId: string,
+  operation: 'upsert' | 'delete',
+  baseRev: number
+): Promise<void> {
   try {
-    const raw = localStorage.getItem('literia_auth_session');
+    await syncQueue.enqueue(docId, operation, baseRev);
+    syncEngine.notifyChange();
+  } catch (e) {
+    console.warn('[Sync] Failed to enqueue outbox change:', e);
+  }
+}
+
+function notifyCloudSync(docId: string, operation: 'upsert' | 'delete' = 'upsert', baseRev = 1) {
+  enqueueDocSync(docId, operation, baseRev);
+  try {
+    const raw = localStorage.getItem('literia_auth_user') || localStorage.getItem('literia_auth_session');
     if (raw) {
-      const authData = JSON.parse(raw);
-      if (authData.user && authData.user.provider !== 'guest') {
-        googleCloudSyncService.queueOrSyncDocument(docId, authData.user);
+      const parsed = JSON.parse(raw);
+      const user = parsed.user || parsed;
+      if (user && user.provider !== 'guest') {
+        googleCloudSyncService.queueOrSyncDocument(docId, user);
       }
     }
   } catch {}
@@ -24,12 +41,52 @@ function notifyCloudSync(docId: string) {
 export const documentService = {
   async getAll(): Promise<Document[]> {
     const docs = await db.documents.toArray();
+    // Auto-resurrect drafts whose content was blanked out if an emergency snapshot exists
+    for (const doc of docs) {
+      if (!doc.isDeleted) {
+        const docText = (doc.content || '').replace(/<[^>]+>/g, '').trim();
+        if (docText.length === 0) {
+          try {
+            const snapshot = localStorage.getItem(`literia_snapshot_${doc.id}`);
+            const snapshotText = snapshot ? snapshot.replace(/<[^>]+>/g, '').trim() : '';
+            if (snapshotText.length > 0) {
+              doc.content = snapshot!;
+              doc.plainTextPreview = snapshotText.slice(0, 160);
+              db.documents.update(doc.id, {
+                content: doc.content,
+                plainTextPreview: doc.plainTextPreview,
+                updatedAt: Date.now(),
+              }).catch(() => {});
+            }
+          } catch {}
+        }
+      }
+    }
     return docs.filter((d) => !d.isDeleted);
   },
 
   async getById(id: string): Promise<Document | undefined> {
     const doc = await db.documents.get(id);
     if (doc && !doc.isDeleted) {
+      // Auto-resurrect blank manuscript content from emergency snapshot if available
+      const docText = (doc.content || '').replace(/<[^>]+>/g, '').trim();
+      if (docText.length === 0) {
+        try {
+          const snapshot = localStorage.getItem(`literia_snapshot_${id}`);
+          const snapshotText = snapshot ? snapshot.replace(/<[^>]+>/g, '').trim() : '';
+          if (snapshotText.length > 0) {
+            console.log(`[documentService] Rescued blank document ${id} from emergency snapshot!`);
+            doc.content = snapshot!;
+            doc.plainTextPreview = snapshotText.slice(0, 160);
+            await db.documents.update(id, {
+              content: doc.content,
+              plainTextPreview: doc.plainTextPreview,
+              updatedAt: Date.now(),
+            });
+          }
+        } catch {}
+      }
+
       await db.documents.update(id, { lastOpenedAt: Date.now() });
       return { ...doc, lastOpenedAt: Date.now() };
     }
@@ -70,7 +127,7 @@ export const documentService = {
 
     await db.documents.add(newDoc);
     await activityService.log('created', newDoc.id, newDoc.title, 'document');
-    notifyCloudSync(newDoc.id);
+    notifyCloudSync(newDoc.id, 'upsert', 0);
     return newDoc;
   },
 
@@ -78,20 +135,37 @@ export const documentService = {
     const existing = await db.documents.get(id);
     if (!existing) return;
 
-    const content = updates.content !== undefined ? updates.content : existing.content;
+    let content = updates.content !== undefined ? updates.content : existing.content;
+    const existingText = (existing.content || '').replace(/<[^>]+>/g, '').trim();
+    const incomingText = (content || '').replace(/<[^>]+>/g, '').trim();
+
+    // Anti-Destruction Guard:
+    // If existing document has substantive text (> 5 characters), and incoming update is blank / empty (<p></p>),
+    // DO NOT allow the empty content to destroy the existing manuscript!
+    if (existingText.length > 5 && incomingText.length === 0 && updates.content !== undefined) {
+      console.warn(`[documentService] Anti-destruction guard triggered for document ${id}. Preserving ${existingText.length} characters.`);
+      content = existing.content;
+      delete updates.content;
+      delete updates.plainTextPreview;
+    }
+
     const plainText = content.replace(/<[^>]+>/g, ' ');
     const docType = updates.type || existing.type;
     const stats = updates.content !== undefined ? calculateEnhancedStats(docType, plainText, content) : existing.stats;
     const metadata = updates.metadata ? { ...existing.metadata, ...updates.metadata } : existing.metadata;
+    const nextVersion = (existing.version || 1) + 1;
 
     await db.documents.update(id, {
       ...updates,
+      content,
+      plainTextPreview: plainText.slice(0, 160),
       stats,
       metadata,
+      version: nextVersion,
       updatedAt: Date.now(),
     });
 
-    notifyCloudSync(id);
+    notifyCloudSync(id, 'upsert', existing.version || 1);
 
     if (updates.title && updates.title !== existing.title) {
       await activityService.log('renamed', id, updates.title, 'document');
@@ -121,6 +195,7 @@ export const documentService = {
 
     await db.documents.add(copy);
     await activityService.log('created', copy.id, copy.title, 'document', { duplicateOf: id });
+    notifyCloudSync(copy.id, 'upsert', 0);
     return copy;
   },
 
@@ -129,6 +204,7 @@ export const documentService = {
     if (!existing) return;
     await db.documents.update(id, { folderId, updatedAt: Date.now() });
     await activityService.log('moved', id, existing.title, 'document', { folderId });
+    notifyCloudSync(id, 'upsert', existing.version || 1);
   },
 
   async toggleFavorite(id: string): Promise<boolean> {
@@ -136,6 +212,7 @@ export const documentService = {
     if (!existing) return false;
     const nextFav = !existing.isFavorite;
     await db.documents.update(id, { isFavorite: nextFav, updatedAt: Date.now() });
+    notifyCloudSync(id, 'upsert', existing.version || 1);
     return nextFav;
   },
 
@@ -144,6 +221,7 @@ export const documentService = {
     if (!existing) return false;
     const nextArchived = !existing.isArchived;
     await db.documents.update(id, { isArchived: nextArchived, updatedAt: Date.now() });
+    notifyCloudSync(id, 'upsert', existing.version || 1);
     return nextArchived;
   },
 
@@ -154,6 +232,7 @@ export const documentService = {
     if (!existing.tags.includes(normalized)) {
       const nextTags = [...existing.tags, normalized];
       await db.documents.update(id, { tags: nextTags, updatedAt: Date.now() });
+      notifyCloudSync(id, 'upsert', existing.version || 1);
     }
   },
 
@@ -162,6 +241,7 @@ export const documentService = {
     if (!existing) return;
     const nextTags = existing.tags.filter((t) => t !== tag);
     await db.documents.update(id, { tags: nextTags, updatedAt: Date.now() });
+    notifyCloudSync(id, 'upsert', existing.version || 1);
   },
 
   async softDelete(id: string): Promise<void> {
@@ -172,7 +252,7 @@ export const documentService = {
       updatedAt: Date.now(),
     });
     await activityService.log('deleted', id, existing.title, 'document');
-    notifyCloudSync(id);
+    notifyCloudSync(id, 'delete', existing.version || 1);
   },
 
   /* Bulk operations */

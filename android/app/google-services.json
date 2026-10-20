@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "754852471988",
+    "project_id": "literia-studio-app",
+    "storage_bucket": "literia-studio-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:754852471988:android:33ecf264189cf30e8823e1",
+        "android_client_info": {
+          "package_name": "com.literia.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "754852471988-0f7fbdovfaqc86ue9vkpbtlcshl7b8l0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.literia.app",
+            "certificate_hash": "39b39c4c84369203f5c0b2a47d7503ce1a68db04"
+          }
+        },
+        {
+          "client_id": "754852471988-qqe5a453mdpf2avm8mqmggjmsroao87e.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB8JE2n8dulhdtMHPF61khAvg9sR_Kvi0w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "754852471988-qqe5a453mdpf2avm8mqmggjmsroao87e.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

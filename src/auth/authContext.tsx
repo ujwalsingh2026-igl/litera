@@ -1,6 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import type { User, AuthProviderType } from '../types';
 import { authService } from '../services/authService';
+import {
+  signInWithGoogleService,
+  signOutService,
+  onAuthStateChangedService,
+  handleRedirectResult,
+  createAccountWithEmailService,
+  signInWithEmailService,
+} from '../lib/firebase/auth';
+import { syncEngine } from '../sync/syncEngine';
 
 interface AuthContextType {
   user: User | null;
@@ -12,7 +21,8 @@ interface AuthContextType {
   setProfileModalOpen: (open: boolean) => void;
   openAuthModal: (defaultMode?: 'signin' | 'signup', defaultProvider?: AuthProviderType) => void;
 
-  // Real Google & Individual Auth Actions
+  // Real Firebase Google & Individual Auth Actions
+  signInWithGoogleFirebase: () => Promise<User>;
   loginWithGoogleRedirect: (customClientId?: string) => void;
   loginWithGoogle: (
     email: string,
@@ -28,7 +38,7 @@ interface AuthContextType {
   sendPhoneOTP: (phoneNumber: string) => Promise<{ success: boolean; simulatedOTP: string }>;
   verifyPhoneOTP: (phoneNumber: string, otp: string) => Promise<User>;
   loginWithSecretCode: (secretCode: string) => Promise<User>;
-  logout: () => void;
+  logout: () => Promise<void>;
 
   // Google OAuth Client ID management
   googleClientId: string;
@@ -45,23 +55,54 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [googleClientId, setGoogleClientIdState] = useState<string>(authService.getGoogleClientId());
 
   useEffect(() => {
-    const initAuth = async () => {
-      // 1. Check if returning from Google OAuth redirect flow
-      const redirectedUser = await authService.handleGoogleRedirectCallback();
-      if (redirectedUser) {
-        setUser(redirectedUser);
+    let isMounted = true;
+
+    // 1. Subscribe to Firebase Auth state (covers session restore & native Google sign-in)
+    const unsubscribeFirebase = onAuthStateChangedService((fbUser) => {
+      if (!isMounted) return;
+      if (fbUser) {
+        setUser(fbUser);
+        authService.saveUserSession(fbUser);
         setIsLoading(false);
-        return;
+      } else {
+        // If not authenticated in Firebase, check local cached session
+        const current = authService.getCurrentUser();
+        if (current && current.provider !== 'guest') {
+          setUser(current);
+        } else {
+          setUser(current);
+        }
+        setIsLoading(false);
       }
+    });
 
-      // 2. Otherwise restore cached session
-      const current = authService.getCurrentUser();
-      setUser(current);
-      setIsLoading(false);
+    // 2. Check for web redirect result
+    handleRedirectResult()
+      .then((redirectUser) => {
+        if (isMounted && redirectUser) {
+          setUser(redirectUser);
+          authService.saveUserSession(redirectUser);
+          setIsLoading(false);
+        }
+      })
+      .catch((e) => {
+        console.warn('[AuthContext] Redirect result check:', e);
+      });
+
+    return () => {
+      isMounted = false;
+      unsubscribeFirebase();
     };
-
-    initAuth();
   }, []);
+
+  // Hook sync engine to user authentication state
+  useEffect(() => {
+    if (user && user.provider !== 'guest') {
+      syncEngine.start(user);
+    } else {
+      syncEngine.stop();
+    }
+  }, [user]);
 
   const setGoogleClientId = (clientId: string) => {
     authService.setGoogleClientId(clientId);
@@ -70,6 +111,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const openAuthModal = (_mode: 'signin' | 'signup' = 'signin', _provider?: AuthProviderType) => {
     setAuthModalOpen(true);
+  };
+
+  /**
+   * Primary Firebase Google Sign-In (Cross-platform Web & Android)
+   */
+  const signInWithGoogleFirebase = async (): Promise<User> => {
+    setIsLoading(true);
+    try {
+      const authenticatedUser = await signInWithGoogleService();
+      setUser(authenticatedUser);
+      authService.saveUserSession(authenticatedUser);
+      return authenticatedUser;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const loginWithGoogleRedirect = (customClientId?: string) => {
@@ -98,12 +154,42 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     password: string,
     displayName?: string
   ): Promise<User> => {
-    const newUser = await authService.registerIndividualAccount(email, password, displayName);
-    setUser(newUser);
-    return newUser;
+    try {
+      const fbUser = await createAccountWithEmailService(email, password, displayName);
+      setUser(fbUser);
+      authService.saveUserSession(fbUser);
+      return fbUser;
+    } catch (fbErr: unknown) {
+      const errCode = (fbErr as { code?: string })?.code || '';
+      if (errCode === 'auth/email-already-in-use') {
+        throw new Error('An account with this email already exists. Please switch to Sign In.');
+      }
+      console.warn('[Auth] Firebase email registration fallback:', fbErr);
+      const newUser = await authService.registerIndividualAccount(email, password, displayName);
+      setUser(newUser);
+      return newUser;
+    }
   };
 
   const loginWithGmail = async (email: string, password?: string): Promise<User> => {
+    if (password) {
+      try {
+        const fbUser = await signInWithEmailService(email, password);
+        setUser(fbUser);
+        authService.saveUserSession(fbUser);
+        return fbUser;
+      } catch (fbErr: unknown) {
+        const errCode = (fbErr as { code?: string })?.code || '';
+        if (errCode === 'auth/user-not-found' || errCode === 'auth/invalid-credential') {
+          const localAccounts = authService.getRegisteredAccounts();
+          const found = localAccounts.find((a) => a.email === email.trim().toLowerCase());
+          if (!found) {
+            throw new Error('No account found for this email address. Please switch to Create Account to register.');
+          }
+        }
+        console.warn('[Auth] Firebase email sign-in fallback:', fbErr);
+      }
+    }
     const newUser = await authService.signInWithGmail(email, password);
     setUser(newUser);
     return newUser;
@@ -137,7 +223,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return newUser;
   };
 
-  const logout = () => {
+  const logout = async (): Promise<void> => {
+    syncEngine.stop();
+    await signOutService();
     authService.clearSession();
     setUser({
       id: 'local_author',
@@ -165,6 +253,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setProfileModalOpen,
         openAuthModal,
 
+        signInWithGoogleFirebase,
         loginWithGoogleRedirect,
         loginWithGoogle,
         loginWithGoogleJwtCredential,

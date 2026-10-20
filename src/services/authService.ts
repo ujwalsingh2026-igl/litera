@@ -468,23 +468,7 @@ export class AuthService {
 
     // mode === 'signin'
     if (!existing) {
-      // Seamless auto-provisioning for authorized device login if password is valid
-      const salt = Math.random().toString(36).substring(2) + Date.now().toString(36);
-      const passwordHash = await this.hashPassword(password, salt);
-      const name = cleanEmail.split('@')[0];
-      const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
-      existing = {
-        id: userId,
-        email: cleanEmail,
-        passwordHash,
-        salt,
-        displayName: formattedName,
-        provider: 'google',
-        createdAt: Date.now(),
-      };
-      accounts.push(existing);
-      this.saveRegisteredAccounts(accounts);
-      this.syncAccountToCloudRegistry(existing).catch(() => {});
+      throw new Error('No account found for this email address. Please switch to Create Account to register.');
     }
 
     const hash = await this.hashPassword(password, existing.salt);
@@ -604,23 +588,7 @@ export class AuthService {
     const userId = await this.getDeterministicUserId(cleanEmail);
 
     if (!existing) {
-      // Seamless auto-provisioning for authorized device login
-      const salt = Math.random().toString(36).substring(2) + Date.now().toString(36);
-      const passwordHash = await this.hashPassword(password, salt);
-      const name = cleanEmail.split('@')[0];
-      const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
-      existing = {
-        id: userId,
-        email: cleanEmail,
-        passwordHash,
-        salt,
-        displayName: formattedName,
-        provider: 'gmail',
-        createdAt: Date.now(),
-      };
-      accounts.push(existing);
-      this.saveRegisteredAccounts(accounts);
-      this.syncAccountToCloudRegistry(existing).catch(() => {});
+      throw new Error('No account found for this email address. Please switch to Create Account to register.');
     }
 
     const hash = await this.hashPassword(password, existing.salt);

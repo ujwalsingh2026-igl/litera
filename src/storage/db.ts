@@ -15,6 +15,7 @@ import type {
   SyncQueueItem,
   Settings,
 } from '../types';
+import type { SyncOutboxItem } from '../sync/sync.types';
 
 export class LiteriaDatabase extends Dexie {
   documents!: Table<Document, string>;
@@ -30,6 +31,7 @@ export class LiteriaDatabase extends Dexie {
   trash!: Table<TrashItem, string>;
   activities!: Table<Activity, string>;
   syncQueue!: Table<SyncQueueItem, string>;
+  syncOutbox!: Table<SyncOutboxItem, string>;
   settings!: Table<Settings, string>;
 
   constructor() {
@@ -50,6 +52,10 @@ export class LiteriaDatabase extends Dexie {
       activities: 'id, action, targetId, timestamp',
       syncQueue: 'id, entityType, entityId, timestamp',
       settings: 'id',
+    });
+
+    this.version(2).stores({
+      syncOutbox: 'id, documentId, status, operation, createdAt, retryCount',
     });
   }
 }
