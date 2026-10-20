@@ -10,15 +10,124 @@ import { GlobalAiModal } from '../ai/GlobalAiModal';
 import { useApp } from '../../state';
 import { useToast } from '../ui/Toast';
 import { Eye } from 'lucide-react';
+import { App as CapApp } from '@capacitor/app';
 
 interface AppShellProps {
   children: ReactNode;
 }
 
 export const AppShell: React.FC<AppShellProps> = ({ children }) => {
-  const { isStorageReady, distractionFree, toggleDistractionFree, currentView } = useApp();
+  const {
+    isStorageReady,
+    distractionFree,
+    toggleDistractionFree,
+    currentView,
+    setCurrentView,
+    navigateBack,
+    navigationHistory,
+    searchModalOpen,
+    setSearchModalOpen,
+    mobileDrawerOpen,
+    setMobileDrawerOpen,
+    rightPanelOpen,
+    setRightPanelOpen,
+  } = useApp();
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const { success, info } = useToast();
+
+  // Hardware and Gesture Back Navigation for Android (prevents unexpected app closures)
+  React.useEffect(() => {
+    let lastBackPress = 0;
+
+    const setupListener = async () => {
+      try {
+        const handle = await CapApp.addListener('backButton', () => {
+          // 1. If any modal dialog is open in DOM, close the topmost one
+          const openModals = document.querySelectorAll('[role="dialog"]');
+          if (openModals.length > 0) {
+            const topModal = openModals[openModals.length - 1];
+            const closeBtn = topModal.querySelector(
+              'button[aria-label="Close dialog"], button[aria-label="Close"], button.modal-close, button[title*="Close"]'
+            ) as HTMLElement | null;
+            if (closeBtn) {
+              closeBtn.click();
+              return;
+            }
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            return;
+          }
+
+          // 2. Check search or AI modal states
+          if (searchModalOpen) {
+            setSearchModalOpen(false);
+            return;
+          }
+          if (aiModalOpen) {
+            setAiModalOpen(false);
+            return;
+          }
+
+          // 3. Check mobile navigation drawer
+          if (mobileDrawerOpen) {
+            setMobileDrawerOpen(false);
+            return;
+          }
+
+          // 4. Check right panel
+          if (rightPanelOpen) {
+            setRightPanelOpen(false);
+            return;
+          }
+
+          // 5. Back out from active screen (e.g. editor, books, settings) to previous view or Home
+          if (currentView !== 'home') {
+            if (navigationHistory && navigationHistory.length > 1) {
+              navigateBack();
+            } else {
+              setCurrentView('home');
+            }
+            return;
+          }
+
+          // 6. On root Home screen with nothing open: double-tap back within 2s to exit
+          const now = Date.now();
+          if (now - lastBackPress < 2000) {
+            CapApp.exitApp();
+          } else {
+            lastBackPress = now;
+            info('Press back again to exit LITERIA');
+          }
+        });
+
+        return handle;
+      } catch (e) {
+        // Not running natively on Android
+        return null;
+      }
+    };
+
+    const promise = setupListener();
+    return () => {
+      promise.then((h) => {
+        if (h && typeof h.remove === 'function') {
+          h.remove();
+        }
+      });
+    };
+  }, [
+    currentView,
+    navigationHistory,
+    searchModalOpen,
+    aiModalOpen,
+    mobileDrawerOpen,
+    rightPanelOpen,
+    navigateBack,
+    setCurrentView,
+    setSearchModalOpen,
+    setMobileDrawerOpen,
+    setRightPanelOpen,
+    info,
+  ]);
 
   React.useEffect(() => {
     const handleReconnectedSync = (e: Event) => {

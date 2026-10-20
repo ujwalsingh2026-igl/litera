@@ -27,6 +27,7 @@ import {
   Palette,
   LayoutTemplate,
   Sparkles,
+  Users,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 
@@ -38,6 +39,9 @@ interface EditorToolbarProps {
   onOpenDrawing?: () => void;
   onOpenTemplate?: () => void;
   onOpenAi?: () => void;
+  onOpenCollab?: () => void;
+  isCollabActive?: boolean;
+  collabCount?: number;
   className?: string;
 }
 
@@ -51,6 +55,9 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
   onOpenDrawing,
   onOpenTemplate,
   onOpenAi,
+  onOpenCollab,
+  isCollabActive = false,
+  collabCount = 1,
   className = '',
 }) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -444,6 +451,29 @@ export const EditorToolbar: React.FC<EditorToolbarProps> = ({
 
       {/* Find, Export, Signature, Drawing & Template Actions */}
       <div className="flex items-center gap-1 pl-1.5 border-l border-stone-200 dark:border-stone-800">
+        {onOpenCollab && (
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={onOpenCollab}
+            className={cn(
+              'p-1.5 rounded-md transition flex items-center gap-1.5 text-xs font-semibold',
+              isCollabActive
+                ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30'
+                : 'hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300'
+            )}
+            title="Real-Time Cloud Share & Live Collaboration"
+          >
+            <div className="relative">
+              <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              {isCollabActive && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              )}
+            </div>
+            <span>{isCollabActive ? `Live (${collabCount})` : 'Share'}</span>
+          </button>
+        )}
+
         {onOpenExport && (
           <button
             onClick={onOpenExport}

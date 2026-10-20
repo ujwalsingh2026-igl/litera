@@ -16,6 +16,8 @@ import { AuthorSignatureModal } from '../components/signature/AuthorSignatureMod
 import { DrawingStudioModal } from '../components/drawing/DrawingStudioModal';
 import { TemplateDesignerModal } from '../components/templates/TemplateDesignerModal';
 import { GlobalAiModal } from '../components/ai/GlobalAiModal';
+import { LiveCollabModal } from '../components/collab/LiveCollabModal';
+import { realtimeCollabService } from '../services/realtimeCollabService';
 import { useAuth } from '../auth';
 import { googleCloudSyncService } from '../services/googleCloudSyncService';
 import type { Document, DocumentStats, DocumentType, DocumentTypeMetadata, Chapter, Book } from '../types';
@@ -47,6 +49,9 @@ export const LiteriaEditor: React.FC = () => {
   const [hasUnsaved, setHasUnsaved] = useState(false);
   const [findReplaceOpen, setFindReplaceOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [collabModalOpen, setCollabModalOpen] = useState(false);
+  const [isCollabActive, setIsCollabActive] = useState(false);
+  const [collabCount, setCollabCount] = useState(1);
   const [signatureModalOpen, setSignatureModalOpen] = useState(false);
   const [drawingModalOpen, setDrawingModalOpen] = useState(false);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
@@ -176,6 +181,8 @@ export const LiteriaEditor: React.FC = () => {
         } catch {
           // ignore quota exceeded
         }
+        // Broadcast real-time edit to active collaboration room
+        realtimeCollabService.broadcastEdit(currentDocIdRef.current, html, title);
       }
 
       // Debounced save to IndexedDB & Google Cloud Vault
@@ -216,6 +223,46 @@ export const LiteriaEditor: React.FC = () => {
       editor.commands.setContent(contentToLoad);
     }
   }, [doc, editor]);
+
+  // Real-time peer editing listener and presence sync
+  useEffect(() => {
+    const unsubContent = realtimeCollabService.onContent((remoteHtml, _senderName, remoteTitle) => {
+      if (editor) {
+        const currentHtml = editor.getHTML();
+        if (currentHtml !== remoteHtml) {
+          editor.commands.setContent(remoteHtml, { emitUpdate: false });
+        }
+      }
+      if (remoteTitle && remoteTitle !== title) {
+        setTitle(remoteTitle);
+      }
+    });
+
+    const unsubCollab = realtimeCollabService.onCollaborators((list) => {
+      setCollabCount(list.length);
+    });
+
+    const unsubStatus = realtimeCollabService.onStatus((_connected, roomId) => {
+      setIsCollabActive(Boolean(roomId));
+    });
+
+    // Check if URL has #collab=ROOM_CODE or ?collab=ROOM_CODE
+    if (typeof window !== 'undefined' && user) {
+      const hash = window.location.hash;
+      if (hash.includes('collab=')) {
+        const code = hash.split('collab=')[1].split('&')[0].replace(/[^A-Z0-9_-]/g, '');
+        if (code) {
+          realtimeCollabService.joinRoom(code, user, doc?.content || '', doc?.title || '');
+        }
+      }
+    }
+
+    return () => {
+      unsubContent();
+      unsubCollab();
+      unsubStatus();
+    };
+  }, [editor, user, doc?.content, doc?.title, title]);
 
   // Handle immediate manual save (Ctrl+S)
   const handleImmediateSave = useCallback(async () => {
@@ -367,6 +414,9 @@ export const LiteriaEditor: React.FC = () => {
             onOpenDrawing={() => setDrawingModalOpen(true)}
             onOpenTemplate={() => setTemplateModalOpen(true)}
             onOpenAi={() => setAiModalOpen(true)}
+            onOpenCollab={() => setCollabModalOpen(true)}
+            isCollabActive={isCollabActive}
+            collabCount={collabCount}
           />
 
           {/* Type-Specific Specialized Toolbar */}
@@ -537,6 +587,9 @@ export const LiteriaEditor: React.FC = () => {
         onOpenDrawing={() => setDrawingModalOpen(true)}
         onOpenTemplate={() => setTemplateModalOpen(true)}
         onToggleFindReplace={() => setFindReplaceOpen((prev) => !prev)}
+        onOpenCollab={() => setCollabModalOpen(true)}
+        isCollabActive={isCollabActive}
+        collabCount={collabCount}
       />
 
       {/* Status Bar */}
@@ -544,6 +597,13 @@ export const LiteriaEditor: React.FC = () => {
         stats={stats}
         isSaving={isSaving}
         hasUnsaved={hasUnsaved}
+      />
+
+      {/* Real-time Cloud Share & Live Collaboration Studio */}
+      <LiveCollabModal
+        isOpen={collabModalOpen}
+        onClose={() => setCollabModalOpen(false)}
+        document={doc}
       />
 
       {/* Export, Signature, Drawing, Template & AI Modals */}

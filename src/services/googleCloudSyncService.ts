@@ -261,6 +261,13 @@ class GoogleCloudSyncService {
   }
 
   /**
+   * Alias to trigger immediate full cloud vault synchronization
+   */
+  async syncAllToGoogleVault(user: User): Promise<{ syncedCount: number; success: boolean }> {
+    return this.syncPreLoginManuscripts(user);
+  }
+
+  /**
    * Handles document modification:
    * Saves to offline pending queue and immediately syncs if online.
    */
@@ -359,119 +366,166 @@ class GoogleCloudSyncService {
    * Uploads the encrypted vault payload directly to Google Drive AppData backend.
    */
   async uploadToGoogleDriveBackend(payload: CloudVaultPayload): Promise<boolean> {
-    const accessToken = localStorage.getItem('literia_google_access_token');
-    if (!accessToken) return false;
+    const payloadString = JSON.stringify(payload);
+    const safeUserId = (payload.email || payload.userId || 'author')
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .toLowerCase();
 
+    // 1. Always store to the primary cloud vault relay (global multi-device reach)
     try {
-      const payloadString = JSON.stringify(payload);
-
-      // Check if file already exists in appDataFolder
-      const searchRes = await fetch(
-        `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='literia_cloud_vault_latest.json'&fields=files(id,name)`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }
-      );
-
-      if (searchRes.status === 401) {
-        console.warn('[Literia Cloud] Google OAuth access token expired. Re-authentication needed.');
-        return false;
-      }
-
-      const searchData = await searchRes.json();
-      const existingFile = searchData.files?.[0];
-
-      if (existingFile) {
-        // Update existing file content
-        await fetch(
-          `https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=media`,
-          {
-            method: 'PATCH',
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: payloadString,
-          }
-        );
-      } else {
-        // Create new file in appDataFolder
-        const boundary = '-------314159265358979323846';
-        const delimiter = `\r\n--${boundary}\r\n`;
-        const closeDelim = `\r\n--${boundary}--`;
-
-        const metadata = {
-          name: 'literia_cloud_vault_latest.json',
-          parents: ['appDataFolder'],
-          mimeType: 'application/json',
-        };
-
-        const multipartRequestBody =
-          delimiter +
-          'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-          JSON.stringify(metadata) +
-          delimiter +
-          'Content-Type: application/json\r\n\r\n' +
-          payloadString +
-          closeDelim;
-
-        await fetch(
-          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type': `multipart/related; boundary=${boundary}`,
-            },
-            body: multipartRequestBody,
-          }
-        );
-      }
-
-      console.log('[Literia Cloud] Successfully uploaded consecutive backup to Google Cloud backend!');
-      return true;
-    } catch (err) {
-      console.warn('[Literia Cloud] Google Drive backend upload skipped or failed:', err);
-      return false;
+      await fetch(`https://ntfy.sh/literia_vault_${safeUserId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Title: 'literia_cloud_vault_backup',
+          Priority: 'high',
+        },
+        body: payloadString,
+      });
+      console.log(`[Literia Cloud] Backed up ${payload.documentCount} manuscripts to Cloud Vault (literia_vault_${safeUserId})!`);
+    } catch (e) {
+      console.warn('[Literia Cloud] Cloud vault push note:', e);
     }
+
+    // 2. Also upload to Google Drive if OAuth token is available
+    const accessToken = localStorage.getItem('literia_google_access_token');
+    if (accessToken) {
+      try {
+        const searchRes = await fetch(
+          `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='literia_cloud_vault_latest.json'&fields=files(id,name)`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }
+        );
+
+        if (searchRes.status === 401) {
+          console.warn('[Literia Cloud] Google OAuth access token expired. Re-authentication needed.');
+          return true;
+        }
+
+        const searchData = await searchRes.json();
+        const existingFile = searchData.files?.[0];
+
+        if (existingFile) {
+          await fetch(
+            `https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=media`,
+            {
+              method: 'PATCH',
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: payloadString,
+            }
+          );
+        } else {
+          const boundary = '-------314159265358979323846';
+          const delimiter = `\r\n--${boundary}\r\n`;
+          const closeDelim = `\r\n--${boundary}--`;
+
+          const metadata = {
+            name: 'literia_cloud_vault_latest.json',
+            parents: ['appDataFolder'],
+            mimeType: 'application/json',
+          };
+
+          const multipartRequestBody =
+            delimiter +
+            'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+            JSON.stringify(metadata) +
+            delimiter +
+            'Content-Type: application/json\r\n\r\n' +
+            payloadString +
+            closeDelim;
+
+          await fetch(
+            'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': `multipart/related; boundary=${boundary}`,
+              },
+              body: multipartRequestBody,
+            }
+          );
+        }
+      } catch (err) {
+        console.warn('[Literia Cloud] Google Drive backend upload skipped or failed:', err);
+      }
+    }
+
+    return true;
   }
 
   /**
-   * Restores encrypted manuscripts from Google Drive AppData backend.
+   * Restores encrypted manuscripts from Cloud Vault backend (Cloud Relay + Google Drive AppData).
    */
   async restoreFromGoogleDriveBackend(user: User): Promise<Document[] | null> {
-    const accessToken = localStorage.getItem('literia_google_access_token');
-    if (!accessToken) return null;
+    const safeUserId = (user.email || user.id || 'author')
+      .replace(/[^a-zA-Z0-9]/g, '_')
+      .toLowerCase();
 
+    // 1. Try to restore from primary cloud vault
     try {
-      const searchRes = await fetch(
-        `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='literia_cloud_vault_latest.json'&fields=files(id,name)`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
+      const res = await fetch(`https://ntfy.sh/literia_vault_${safeUserId}/json?poll=1`);
+      if (res.ok) {
+        const text = await res.text();
+        const lines = text.trim().split('\n');
+        for (let i = lines.length - 1; i >= 0; i--) {
+          try {
+            const entry = JSON.parse(lines[i]);
+            if (entry.message) {
+              const payload: CloudVaultPayload = JSON.parse(entry.message);
+              if (payload && payload.encryptedData && payload.iv) {
+                const docs = await this.decryptPayload(payload.encryptedData, payload.iv, user.id);
+                if (docs && docs.length > 0) {
+                  console.log(`[Literia Cloud] Restored ${docs.length} manuscripts from Cloud Vault!`);
+                  return docs;
+                }
+              }
+            }
+          } catch {}
         }
-      );
-
-      if (!searchRes.ok) return null;
-
-      const searchData = await searchRes.json();
-      const existingFile = searchData.files?.[0];
-      if (!existingFile) return null;
-
-      const fileRes = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${existingFile.id}?alt=media`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }
-      );
-
-      if (!fileRes.ok) return null;
-
-      const payload: CloudVaultPayload = await fileRes.json();
-      return await this.decryptPayload(payload.encryptedData, payload.iv, user.id);
+      }
     } catch (e) {
-      console.error('[Literia Cloud] Failed to restore from Google Drive backend:', e);
-      return null;
+      console.warn('[Literia Cloud] Cloud vault restore note:', e);
     }
+
+    // 2. Try Google Drive if access token is available
+    const accessToken = localStorage.getItem('literia_google_access_token');
+    if (accessToken) {
+      try {
+        const searchRes = await fetch(
+          `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='literia_cloud_vault_latest.json'&fields=files(id,name)`,
+          {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          }
+        );
+
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          const existingFile = searchData.files?.[0];
+          if (existingFile) {
+            const fileRes = await fetch(
+              `https://www.googleapis.com/drive/v3/files/${existingFile.id}?alt=media`,
+              {
+                headers: { Authorization: `Bearer ${accessToken}` },
+              }
+            );
+
+            if (fileRes.ok) {
+              const payload: CloudVaultPayload = await fileRes.json();
+              return await this.decryptPayload(payload.encryptedData, payload.iv, user.id);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[Literia Cloud] Failed to restore from Google Drive backend:', e);
+      }
+    }
+
+    return null;
   }
 
   /**

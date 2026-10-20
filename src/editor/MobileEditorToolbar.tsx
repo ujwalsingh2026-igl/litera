@@ -21,6 +21,7 @@ import {
   Palette,
   LayoutTemplate,
   Search,
+  Users,
 } from 'lucide-react';
 import { BottomSheet } from '../components/ui';
 
@@ -33,6 +34,9 @@ interface MobileEditorToolbarProps {
   onOpenDrawing?: () => void;
   onOpenTemplate?: () => void;
   onToggleFindReplace?: () => void;
+  onOpenCollab?: () => void;
+  isCollabActive?: boolean;
+  collabCount?: number;
 }
 
 const safeChain = (editor: Editor) => editor.chain().focus();
@@ -46,6 +50,9 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
   onOpenDrawing,
   onOpenTemplate,
   onToggleFindReplace,
+  onOpenCollab,
+  isCollabActive = false,
+  collabCount = 1,
 }) => {
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -257,10 +264,26 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
             </div>
           </div>
 
-          {(onOpenExport || onOpenSignature || onOpenDrawing || onOpenTemplate || onToggleFindReplace) && (
+          {(onOpenCollab || onOpenExport || onOpenSignature || onOpenDrawing || onOpenTemplate || onToggleFindReplace) && (
             <div>
               <div className="font-semibold text-stone-400 uppercase text-[10px] mb-2">Studio Tools</div>
               <div className="grid grid-cols-2 gap-2">
+                {onOpenCollab && (
+                  <button
+                    onClick={() => {
+                      setSheetOpen(false);
+                      onOpenCollab();
+                    }}
+                    className={`p-2.5 rounded-lg border flex items-center justify-center gap-2 transition ${
+                      isCollabActive
+                        ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 font-semibold'
+                        : 'border-stone-200 dark:border-stone-700 hover:bg-stone-50 dark:hover:bg-stone-800'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>{isCollabActive ? `Live Collab (${collabCount})` : 'Share & Collab'}</span>
+                  </button>
+                )}
                 {onOpenExport && (
                   <button
                     onClick={() => {
