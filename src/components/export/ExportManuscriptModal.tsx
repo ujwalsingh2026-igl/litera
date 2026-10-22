@@ -4,9 +4,12 @@ import type { Document, Chapter, SignaturePlacement } from '../../types';
 import { Modal, Button, Input } from '../ui';
 import {
   generateManuscriptPrintHtml,
-  printManuscriptHtml,
   type PrintManuscriptSection,
 } from '../../utils/printManuscript';
+import {
+  exportManuscriptFile,
+  printOrShareManuscript,
+} from '../../utils/exportHelper';
 import {
   Printer,
   FileText,
@@ -118,145 +121,199 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownloadTxt = () => {
-    const text = getPlainText();
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    downloadBlob(blob, `${effectiveTitle.replace(/\s+/g, '_')}.txt`);
+  const [isExporting, setIsExporting] = useState<string | null>(null);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
+
+  const showNotice = (msg: string) => {
+    setExportNotice(msg);
+    setTimeout(() => setExportNotice(null), 3500);
   };
 
-  const handleDownloadMd = () => {
-    let md = `# ${effectiveTitle}\n\n`;
-    if (bookSubtitle) md += `*${bookSubtitle}*\n\n`;
-    md += `**Author:** ${author}  \n`;
-    md += `**Date:** ${new Date().toLocaleDateString()}  \n\n`;
-    md += `---\n\n`;
-
-    sectionsToExport.forEach((sec, idx) => {
-      if (sectionsToExport.length > 1 && sec.title) {
-        md += `\n\n## ${sec.title}\n\n`;
+  const handleDownloadTxt = async () => {
+    setIsExporting('txt');
+    try {
+      const text = getPlainText();
+      const res = await exportManuscriptFile({
+        filename: `${effectiveTitle.replace(/\s+/g, '_')}.txt`,
+        mimeType: 'text/plain',
+        content: text,
+        title: effectiveTitle,
+      });
+      if (res.success) {
+        showNotice(res.method === 'capacitor-share' || res.method === 'web-share' ? 'Shared successfully!' : 'Downloaded .txt file!');
       }
-      md += (sec.contentHtml || '').replace(/<p>/g, '').replace(/<\/p>/g, '\n\n').replace(/<[^>]+>/g, '');
-      if (idx < sectionsToExport.length - 1) {
-        md += '\n\n* * *\n\n';
-      }
-    });
-
-    if (exportPlacement === 'bottom' || exportPlacement === 'both') {
-      md += `\n\n---\n\n*Signed by ${typedName}*\n`;
+    } finally {
+      setIsExporting(null);
     }
-    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-    downloadBlob(blob, `${effectiveTitle.replace(/\s+/g, '_')}.md`);
   };
 
-  const handleDownloadDocx = () => {
-    const sectionsDocHtml = sectionsToExport
-      .map(
-        (sec, idx) => `
-        <div style="${idx > 0 ? 'page-break-before: always; mso-break-type: page-break;' : ''}">
-          ${sectionsToExport.length > 1 && sec.title ? `<h2 style="font-size: 18pt; text-align: center; margin-top: 0.8in; margin-bottom: 0.3in;">${sec.title}</h2>` : ''}
-          <div>${sec.contentHtml}</div>
-        </div>
-      `
-      )
-      .join('\n');
+  const handleDownloadMd = async () => {
+    setIsExporting('md');
+    try {
+      let md = `# ${effectiveTitle}\n\n`;
+      if (bookSubtitle) md += `*${bookSubtitle}*\n\n`;
+      md += `**Author:** ${author}  \n`;
+      md += `**Date:** ${new Date().toLocaleDateString()}  \n\n`;
+      md += `---\n\n`;
 
-    let docHtml = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="utf-8">
-        <title>${effectiveTitle}</title>
-        <style>
-          body { font-family: 'Georgia', serif; font-size: 12pt; line-height: 1.6; margin: 1in; }
-          h1 { text-align: center; font-size: 24pt; margin-bottom: 0.5in; }
-          .subtitle { text-align: center; font-style: italic; font-size: 14pt; margin-bottom: 0.25in; }
-          .author { text-align: center; font-weight: bold; font-size: 12pt; margin-bottom: 0.5in; }
-          .signature-box { margin-top: 1in; border-top: 1px solid #000; padding-top: 10px; }
-        </style>
-      </head>
-      <body>
-        <h1>${effectiveTitle}</h1>
-        ${bookSubtitle ? `<div class="subtitle">${bookSubtitle}</div>` : ''}
-        <div class="author">By ${author}</div>
-        <hr/>
-        ${sectionsDocHtml}
-        ${
-          exportPlacement === 'bottom' || exportPlacement === 'both'
-            ? `<div class="signature-box">
-                <p><strong>Signed by Author:</strong> ${typedName}</p>
-                <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-               </div>`
-            : ''
+      sectionsToExport.forEach((sec, idx) => {
+        if (sectionsToExport.length > 1 && sec.title) {
+          md += `\n\n## ${sec.title}\n\n`;
         }
-      </body>
-      </html>
-    `;
-    const blob = new Blob([docHtml], { type: 'application/msword;charset=utf-8' });
-    downloadBlob(blob, `${effectiveTitle.replace(/\s+/g, '_')}.doc`);
+        md += (sec.contentHtml || '').replace(/<p>/g, '').replace(/<\/p>/g, '\n\n').replace(/<[^>]+>/g, '');
+        if (idx < sectionsToExport.length - 1) {
+          md += '\n\n* * *\n\n';
+        }
+      });
+
+      if (exportPlacement === 'bottom' || exportPlacement === 'both') {
+        md += `\n\n---\n\n*Signed by ${typedName}*\n`;
+      }
+      const res = await exportManuscriptFile({
+        filename: `${effectiveTitle.replace(/\s+/g, '_')}.md`,
+        mimeType: 'text/markdown',
+        content: md,
+        title: effectiveTitle,
+      });
+      if (res.success) {
+        showNotice(res.method === 'capacitor-share' || res.method === 'web-share' ? 'Shared successfully!' : 'Downloaded .md file!');
+      }
+    } finally {
+      setIsExporting(null);
+    }
   };
 
-  const handleDownloadHtml = () => {
-    const fullHtml = generateManuscriptPrintHtml({
-      title: effectiveTitle,
-      subtitle: bookSubtitle,
-      author,
-      genre,
-      sections: sectionsToExport,
-      watermark: {
-        enabled: exportPlacement === 'watermark' || exportPlacement === 'both',
-        text: watermarkText,
-        opacity: sig.watermarkOpacity || 0.12,
-      },
-      signature: {
-        enabled: exportPlacement === 'bottom' || exportPlacement === 'both',
-        typedName,
-        date: new Date().toLocaleDateString(),
-      },
-    });
+  const handleDownloadDocx = async () => {
+    setIsExporting('doc');
+    try {
+      const sectionsDocHtml = sectionsToExport
+        .map(
+          (sec, idx) => `
+          <div style="${idx > 0 ? 'page-break-before: always; mso-break-type: page-break;' : ''}">
+            ${sectionsToExport.length > 1 && sec.title ? `<h2 style="font-size: 18pt; text-align: center; margin-top: 0.8in; margin-bottom: 0.3in;">${sec.title}</h2>` : ''}
+            <div>${sec.contentHtml}</div>
+          </div>
+        `
+        )
+        .join('\n');
 
-    const blob = new Blob([fullHtml], { type: 'text/html;charset=utf-8' });
-    downloadBlob(blob, `${effectiveTitle.replace(/\s+/g, '_')}.html`);
+      let docHtml = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="utf-8">
+          <title>${effectiveTitle}</title>
+          <style>
+            body { font-family: 'Georgia', serif; font-size: 12pt; line-height: 1.6; margin: 1in; }
+            h1 { text-align: center; font-size: 24pt; margin-bottom: 0.5in; }
+            .subtitle { text-align: center; font-style: italic; font-size: 14pt; margin-bottom: 0.25in; }
+            .author { text-align: center; font-weight: bold; font-size: 12pt; margin-bottom: 0.5in; }
+            .signature-box { margin-top: 1in; border-top: 1px solid #000; padding-top: 10px; }
+          </style>
+        </head>
+        <body>
+          <h1>${effectiveTitle}</h1>
+          ${bookSubtitle ? `<div class="subtitle">${bookSubtitle}</div>` : ''}
+          <div class="author">By ${author}</div>
+          <hr/>
+          ${sectionsDocHtml}
+          ${
+            exportPlacement === 'bottom' || exportPlacement === 'both'
+              ? `<div class="signature-box">
+                  <p><strong>Signed by Author:</strong> ${typedName}</p>
+                  <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+                 </div>`
+              : ''
+          }
+        </body>
+        </html>
+      `;
+      const res = await exportManuscriptFile({
+        filename: `${effectiveTitle.replace(/\s+/g, '_')}.doc`,
+        mimeType: 'application/msword',
+        content: docHtml,
+        title: effectiveTitle,
+      });
+      if (res.success) {
+        showNotice(res.method === 'capacitor-share' || res.method === 'web-share' ? 'Shared successfully!' : 'Downloaded .doc file!');
+      }
+    } finally {
+      setIsExporting(null);
+    }
   };
 
-  const handlePrintPdf = () => {
-    // Save signature placement settings back to state
-    updateSettings({
-      signature: {
-        ...sig,
-        placement: exportPlacement,
-        watermarkText,
-        typedName,
-      },
-    });
+  const handleDownloadHtml = async () => {
+    setIsExporting('html');
+    try {
+      const fullHtml = generateManuscriptPrintHtml({
+        title: effectiveTitle,
+        subtitle: bookSubtitle,
+        author,
+        genre,
+        sections: sectionsToExport,
+        watermark: {
+          enabled: exportPlacement === 'watermark' || exportPlacement === 'both',
+          text: watermarkText,
+          opacity: sig.watermarkOpacity || 0.12,
+        },
+        signature: {
+          enabled: exportPlacement === 'bottom' || exportPlacement === 'both',
+          typedName,
+          date: new Date().toLocaleDateString(),
+        },
+      });
 
-    const fullPrintHtml = generateManuscriptPrintHtml({
-      title: effectiveTitle,
-      subtitle: bookSubtitle,
-      author,
-      genre,
-      sections: sectionsToExport,
-      watermark: {
-        enabled: exportPlacement === 'watermark' || exportPlacement === 'both',
-        text: watermarkText,
-        opacity: sig.watermarkOpacity || 0.12,
-      },
-      signature: {
-        enabled: exportPlacement === 'bottom' || exportPlacement === 'both',
-        typedName,
-        date: new Date().toLocaleDateString(),
-      },
-    });
-
-    // Uses isolated iframe printing that formats across unlimited pages without cutoff
-    printManuscriptHtml(fullPrintHtml);
+      const res = await exportManuscriptFile({
+        filename: `${effectiveTitle.replace(/\s+/g, '_')}.html`,
+        mimeType: 'text/html',
+        content: fullHtml,
+        title: effectiveTitle,
+      });
+      if (res.success) {
+        showNotice(res.method === 'capacitor-share' || res.method === 'web-share' ? 'Shared successfully!' : 'Downloaded .html file!');
+      }
+    } finally {
+      setIsExporting(null);
+    }
   };
 
-  const downloadBlob = (blob: Blob, filename: string) => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handlePrintPdf = async () => {
+    setIsExporting('pdf');
+    try {
+      // Save signature placement settings back to state
+      updateSettings({
+        signature: {
+          ...sig,
+          placement: exportPlacement,
+          watermarkText,
+          typedName,
+        },
+      });
+
+      const fullPrintHtml = generateManuscriptPrintHtml({
+        title: effectiveTitle,
+        subtitle: bookSubtitle,
+        author,
+        genre,
+        sections: sectionsToExport,
+        watermark: {
+          enabled: exportPlacement === 'watermark' || exportPlacement === 'both',
+          text: watermarkText,
+          opacity: sig.watermarkOpacity || 0.12,
+        },
+        signature: {
+          enabled: exportPlacement === 'bottom' || exportPlacement === 'both',
+          typedName,
+          date: new Date().toLocaleDateString(),
+        },
+      });
+
+      const res = await printOrShareManuscript(effectiveTitle, fullPrintHtml);
+      if (res.success) {
+        showNotice(res.method === 'capacitor-share' || res.method === 'web-share' ? 'Printable document shared!' : 'Print dialog opened!');
+      }
+    } finally {
+      setIsExporting(null);
+    }
   };
 
   return (
@@ -276,6 +333,14 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Dynamic Export Notification */}
+        {exportNotice && (
+          <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs text-emerald-800 dark:text-emerald-300 font-medium flex items-center gap-2 animate-in fade-in">
+            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{exportNotice}</span>
+          </div>
+        )}
 
         {/* Scope selector if multiple chapters exist */}
         {hasMultipleChapters && (
@@ -377,17 +442,18 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
             <button
               type="button"
               onClick={handlePrintPdf}
-              className="p-3.5 rounded-xl border border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/30 hover:bg-amber-100/60 dark:hover:bg-amber-900/40 text-left transition flex flex-col justify-between group"
+              disabled={isExporting !== null}
+              className="p-3.5 rounded-xl border border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/30 hover:bg-amber-100/60 dark:hover:bg-amber-900/40 text-left transition flex flex-col justify-between group disabled:opacity-50"
             >
               <div className="flex items-center justify-between mb-2">
                 <Printer className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                 <span className="text-[10px] uppercase tracking-wider font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded">
-                  Recommended
+                  {isExporting === 'pdf' ? 'Exporting...' : 'Recommended'}
                 </span>
               </div>
               <div>
                 <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
-                  Print / Save as PDF
+                  {isExporting === 'pdf' ? 'Preparing PDF / Print...' : 'Print / Save as PDF'}
                 </div>
                 <div className="text-[11px] text-stone-500 dark:text-stone-400">
                   Full multi-page document with cover & page numbers
@@ -399,15 +465,18 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
             <button
               type="button"
               onClick={handleDownloadDocx}
-              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-blue-500/40 bg-white dark:bg-stone-900 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 text-left transition flex flex-col justify-between"
+              disabled={isExporting !== null}
+              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-blue-500/40 bg-white dark:bg-stone-900 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 text-left transition flex flex-col justify-between disabled:opacity-50"
             >
               <div className="flex items-center justify-between mb-2">
                 <FileText className="w-5 h-5 text-blue-500" />
-                <span className="text-[10px] text-stone-400 font-mono">.doc / .docx</span>
+                <span className="text-[10px] text-stone-400 font-mono">
+                  {isExporting === 'doc' ? 'Exporting...' : '.doc / .docx'}
+                </span>
               </div>
               <div>
                 <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
-                  Microsoft Word
+                  {isExporting === 'doc' ? 'Exporting Word Document...' : 'Microsoft Word'}
                 </div>
                 <div className="text-[11px] text-stone-500 dark:text-stone-400">
                   Editable Word document file with chapter breaks
@@ -419,15 +488,18 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
             <button
               type="button"
               onClick={handleDownloadMd}
-              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-emerald-500/40 bg-white dark:bg-stone-900 hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 text-left transition flex flex-col justify-between"
+              disabled={isExporting !== null}
+              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-emerald-500/40 bg-white dark:bg-stone-900 hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 text-left transition flex flex-col justify-between disabled:opacity-50"
             >
               <div className="flex items-center justify-between mb-2">
                 <FileCode className="w-5 h-5 text-emerald-500" />
-                <span className="text-[10px] text-stone-400 font-mono">.md</span>
+                <span className="text-[10px] text-stone-400 font-mono">
+                  {isExporting === 'md' ? 'Exporting...' : '.md'}
+                </span>
               </div>
               <div>
                 <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
-                  Markdown (.md)
+                  {isExporting === 'md' ? 'Exporting Markdown...' : 'Markdown (.md)'}
                 </div>
                 <div className="text-[11px] text-stone-500 dark:text-stone-400">
                   Plain markdown syntax with headers & dividers
@@ -439,15 +511,18 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
             <button
               type="button"
               onClick={handleDownloadTxt}
-              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-purple-500/40 bg-white dark:bg-stone-900 hover:bg-purple-50/40 dark:hover:bg-purple-950/20 text-left transition flex flex-col justify-between"
+              disabled={isExporting !== null}
+              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-purple-500/40 bg-white dark:bg-stone-900 hover:bg-purple-50/40 dark:hover:bg-purple-950/20 text-left transition flex flex-col justify-between disabled:opacity-50"
             >
               <div className="flex items-center justify-between mb-2">
                 <Download className="w-5 h-5 text-purple-500" />
-                <span className="text-[10px] text-stone-400 font-mono">.txt</span>
+                <span className="text-[10px] text-stone-400 font-mono">
+                  {isExporting === 'txt' ? 'Exporting...' : '.txt'}
+                </span>
               </div>
               <div>
                 <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
-                  Plain Text (.txt)
+                  {isExporting === 'txt' ? 'Exporting Plain Text...' : 'Plain Text (.txt)'}
                 </div>
                 <div className="text-[11px] text-stone-500 dark:text-stone-400">
                   Complete unformatted manuscript text
@@ -459,15 +534,18 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
             <button
               type="button"
               onClick={handleDownloadHtml}
-              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-sky-500/40 bg-white dark:bg-stone-900 hover:bg-sky-50/40 dark:hover:bg-sky-950/20 text-left transition flex flex-col justify-between"
+              disabled={isExporting !== null}
+              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-sky-500/40 bg-white dark:bg-stone-900 hover:bg-sky-50/40 dark:hover:bg-sky-950/20 text-left transition flex flex-col justify-between disabled:opacity-50"
             >
               <div className="flex items-center justify-between mb-2">
                 <Globe className="w-5 h-5 text-sky-500" />
-                <span className="text-[10px] text-stone-400 font-mono">.html</span>
+                <span className="text-[10px] text-stone-400 font-mono">
+                  {isExporting === 'html' ? 'Exporting...' : '.html'}
+                </span>
               </div>
               <div>
                 <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
-                  HTML Web Document
+                  {isExporting === 'html' ? 'Exporting HTML Document...' : 'HTML Web Document'}
                 </div>
                 <div className="text-[11px] text-stone-500 dark:text-stone-400">
                   Self-contained web page with cover & watermark

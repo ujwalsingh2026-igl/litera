@@ -4,8 +4,11 @@ import type { Chapter, BookRollupStats } from '../../types';
 import { Printer, Copy, Download, Check, FileText } from 'lucide-react';
 import {
   generateManuscriptPrintHtml,
-  printManuscriptHtml,
 } from '../../utils/printManuscript';
+import {
+  exportManuscriptFile,
+  printOrShareManuscript,
+} from '../../utils/exportHelper';
 import { useApp } from '../../state';
 
 interface ManuscriptCompileModalProps {
@@ -56,18 +59,18 @@ export const ManuscriptCompileModal: React.FC<ManuscriptCompileModalProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleDownload = (format: 'txt' | 'md') => {
+  const handleDownload = async (format: 'txt' | 'md') => {
     const text = getPlainText();
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${bookTitle.replace(/\s+/g, '_')}_Manuscript.${format}`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const mimeType = format === 'txt' ? 'text/plain' : 'text/markdown';
+    await exportManuscriptFile({
+      filename: `${bookTitle.replace(/\s+/g, '_')}_Manuscript.${format}`,
+      mimeType,
+      content: text,
+      title: bookTitle,
+    });
   };
 
-  const handleDownloadDocx = () => {
+  const handleDownloadDocx = async () => {
     const chaptersDocxHtml = chapters
       .map(
         (c, idx) => `
@@ -100,16 +103,15 @@ export const ManuscriptCompileModal: React.FC<ManuscriptCompileModalProps> = ({
       </body>
       </html>
     `;
-    const blob = new Blob([docHtml], { type: 'application/msword;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${bookTitle.replace(/\s+/g, '_')}_Manuscript.doc`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await exportManuscriptFile({
+      filename: `${bookTitle.replace(/\s+/g, '_')}_Manuscript.doc`,
+      mimeType: 'application/msword',
+      content: docHtml,
+      title: bookTitle,
+    });
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     const sig = settings.signature;
     const printHtml = generateManuscriptPrintHtml({
       title: bookTitle,
@@ -135,8 +137,7 @@ export const ManuscriptCompileModal: React.FC<ManuscriptCompileModalProps> = ({
         : undefined,
     });
 
-    // Uses isolated multi-page iframe printing ensuring clean page breaks and unlimited pages
-    printManuscriptHtml(printHtml);
+    await printOrShareManuscript(bookTitle, printHtml);
   };
 
   return (

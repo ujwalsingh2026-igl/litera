@@ -3,6 +3,7 @@ import { useAuth } from '../../auth';
 import { documentService } from '../../services/documentService';
 import { googleCloudSyncService } from '../../services/googleCloudSyncService';
 import { Modal, Button } from '../ui';
+import { exportManuscriptFile } from '../../utils/exportHelper';
 import {
   User as UserIcon,
   Globe,
@@ -132,19 +133,18 @@ export const AccountProfileModal: React.FC<AccountProfileModalProps> = ({
     }
   };
 
-  const handleExportPortableBackup = () => {
+  const handleExportPortableBackup = async () => {
     const backupData = {
       user,
       exportedAt: new Date().toISOString(),
       appVersion: '1.0.0',
     };
-    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `literia-backup-${user.displayName.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await exportManuscriptFile({
+      filename: `literia-backup-${user.displayName.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.json`,
+      mimeType: 'application/json',
+      content: JSON.stringify(backupData, null, 2),
+      title: 'Literia Portable Author Account Backup',
+    });
   };
 
   return (
