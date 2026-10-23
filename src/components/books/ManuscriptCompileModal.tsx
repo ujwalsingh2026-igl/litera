@@ -2,13 +2,9 @@ import React, { useState } from 'react';
 import { Modal } from '../ui';
 import type { Chapter, BookRollupStats } from '../../types';
 import { Printer, Copy, Download, Check, FileText } from 'lucide-react';
-import {
-  generateManuscriptPrintHtml,
-} from '../../utils/printManuscript';
-import {
-  exportManuscriptFile,
-  printOrShareManuscript,
-} from '../../utils/exportHelper';
+import { exportManuscriptFile } from '../../utils/exportHelper';
+import { generateManuscriptPdfBlob } from '../../utils/pdfGenerator';
+import { generateManuscriptDocxBlob } from '../../utils/docxGenerator';
 import { useApp } from '../../state';
 
 interface ManuscriptCompileModalProps {
@@ -71,49 +67,34 @@ export const ManuscriptCompileModal: React.FC<ManuscriptCompileModalProps> = ({
   };
 
   const handleDownloadDocx = async () => {
-    const chaptersDocxHtml = chapters
-      .map(
-        (c, idx) => `
-        <div style="${idx > 0 ? 'page-break-before: always; mso-break-type: page-break;' : ''}">
-          <h2 style="font-size: 18pt; text-align: center; margin-top: 0.8in; margin-bottom: 0.3in;">${c.title}</h2>
-          <div>${c.content}</div>
-        </div>
-      `
-      )
-      .join('\n');
-
-    const docHtml = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="utf-8">
-        <title>${bookTitle}</title>
-        <style>
-          body { font-family: 'Georgia', serif; font-size: 12pt; line-height: 1.6; margin: 1in; }
-          h1 { text-align: center; font-size: 24pt; margin-bottom: 0.5in; }
-          .subtitle { text-align: center; font-style: italic; font-size: 14pt; margin-bottom: 0.25in; }
-          .author { text-align: center; font-weight: bold; font-size: 12pt; margin-bottom: 0.5in; }
-        </style>
-      </head>
-      <body>
-        <h1>${bookTitle}</h1>
-        ${bookSubtitle ? `<div class="subtitle">${bookSubtitle}</div>` : ''}
-        <div class="author">By ${author}</div>
-        <hr/>
-        ${chaptersDocxHtml}
-      </body>
-      </html>
-    `;
-    await exportManuscriptFile({
-      filename: `${bookTitle.replace(/\s+/g, '_')}_Manuscript.doc`,
-      mimeType: 'application/msword',
-      content: docHtml,
+    const docxBlob = await generateManuscriptDocxBlob({
       title: bookTitle,
+      subtitle: bookSubtitle,
+      author,
+      genre,
+      sections: chapters.map((c) => ({
+        title: c.title,
+        contentHtml: c.content,
+      })),
+      signature: settings.signature?.typedName
+        ? {
+            enabled: settings.signature.placement === 'bottom' || settings.signature.placement === 'both',
+            typedName: settings.signature.typedName,
+          }
+        : undefined,
+    });
+
+    await exportManuscriptFile({
+      filename: `${bookTitle.replace(/\s+/g, '_')}_Manuscript.docx`,
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      content: docxBlob,
+      title: `${bookTitle} (Word Document)`,
     });
   };
 
   const handlePrint = async () => {
     const sig = settings.signature;
-    const printHtml = generateManuscriptPrintHtml({
+    const pdfBlob = await generateManuscriptPdfBlob({
       title: bookTitle,
       subtitle: bookSubtitle,
       author,
@@ -137,7 +118,12 @@ export const ManuscriptCompileModal: React.FC<ManuscriptCompileModalProps> = ({
         : undefined,
     });
 
-    await printOrShareManuscript(bookTitle, printHtml);
+    await exportManuscriptFile({
+      filename: `${bookTitle.replace(/\s+/g, '_')}_Manuscript.pdf`,
+      mimeType: 'application/pdf',
+      content: pdfBlob,
+      title: `${bookTitle} (PDF Manuscript)`,
+    });
   };
 
   return (
@@ -175,19 +161,19 @@ export const ManuscriptCompileModal: React.FC<ManuscriptCompileModalProps> = ({
             <button
               onClick={handleDownloadDocx}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 transition"
-              title="Export complete Word .doc with chapter breaks"
+              title="Export complete Word (.docx) with chapter breaks"
             >
               <FileText className="w-3.5 h-3.5" />
-              <span>.doc</span>
+              <span>.docx</span>
             </button>
 
             <button
               onClick={handlePrint}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-amber-600 dark:hover:bg-amber-500 hover:text-white transition font-medium"
-              title="Print or Save complete multi-page manuscript to PDF"
+              title="Export complete multi-page manuscript to PDF (.pdf)"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print / PDF</span>
+              <span>PDF (.pdf)</span>
             </button>
           </div>
         </div>

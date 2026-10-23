@@ -6,10 +6,9 @@ import {
   generateManuscriptPrintHtml,
   type PrintManuscriptSection,
 } from '../../utils/printManuscript';
-import {
-  exportManuscriptFile,
-  printOrShareManuscript,
-} from '../../utils/exportHelper';
+import { exportManuscriptFile } from '../../utils/exportHelper';
+import { generateManuscriptPdfBlob } from '../../utils/pdfGenerator';
+import { generateManuscriptDocxBlob } from '../../utils/docxGenerator';
 import {
   Printer,
   FileText,
@@ -186,56 +185,36 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
   const handleDownloadDocx = async () => {
     setIsExporting('doc');
     try {
-      const sectionsDocHtml = sectionsToExport
-        .map(
-          (sec, idx) => `
-          <div style="${idx > 0 ? 'page-break-before: always; mso-break-type: page-break;' : ''}">
-            ${sectionsToExport.length > 1 && sec.title ? `<h2 style="font-size: 18pt; text-align: center; margin-top: 0.8in; margin-bottom: 0.3in;">${sec.title}</h2>` : ''}
-            <div>${sec.contentHtml}</div>
-          </div>
-        `
-        )
-        .join('\n');
-
-      let docHtml = `
-        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-        <head>
-          <meta charset="utf-8">
-          <title>${effectiveTitle}</title>
-          <style>
-            body { font-family: 'Georgia', serif; font-size: 12pt; line-height: 1.6; margin: 1in; }
-            h1 { text-align: center; font-size: 24pt; margin-bottom: 0.5in; }
-            .subtitle { text-align: center; font-style: italic; font-size: 14pt; margin-bottom: 0.25in; }
-            .author { text-align: center; font-weight: bold; font-size: 12pt; margin-bottom: 0.5in; }
-            .signature-box { margin-top: 1in; border-top: 1px solid #000; padding-top: 10px; }
-          </style>
-        </head>
-        <body>
-          <h1>${effectiveTitle}</h1>
-          ${bookSubtitle ? `<div class="subtitle">${bookSubtitle}</div>` : ''}
-          <div class="author">By ${author}</div>
-          <hr/>
-          ${sectionsDocHtml}
-          ${
-            exportPlacement === 'bottom' || exportPlacement === 'both'
-              ? `<div class="signature-box">
-                  <p><strong>Signed by Author:</strong> ${typedName}</p>
-                  <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-                 </div>`
-              : ''
-          }
-        </body>
-        </html>
-      `;
-      const res = await exportManuscriptFile({
-        filename: `${effectiveTitle.replace(/\s+/g, '_')}.doc`,
-        mimeType: 'application/msword',
-        content: docHtml,
+      const docxBlob = await generateManuscriptDocxBlob({
         title: effectiveTitle,
+        subtitle: bookSubtitle,
+        author,
+        genre,
+        sections: sectionsToExport,
+        signature: {
+          enabled: exportPlacement === 'bottom' || exportPlacement === 'both',
+          typedName,
+          date: new Date().toLocaleDateString(),
+        },
       });
+
+      const res = await exportManuscriptFile({
+        filename: `${effectiveTitle.replace(/\s+/g, '_')}.docx`,
+        mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        content: docxBlob,
+        title: `${effectiveTitle} (Word Document)`,
+      });
+
       if (res.success) {
-        showNotice(res.method === 'capacitor-share' || res.method === 'web-share' ? 'Shared successfully!' : 'Downloaded .doc file!');
+        showNotice(
+          res.method === 'capacitor-share' || res.method === 'web-share'
+            ? 'Word document (.docx) shared!'
+            : 'Downloaded .docx file!'
+        );
       }
+    } catch (err) {
+      console.error('Failed to generate Word document:', err);
+      showNotice('Failed to generate Word document (.docx)');
     } finally {
       setIsExporting(null);
     }
@@ -289,7 +268,8 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
         },
       });
 
-      const fullPrintHtml = generateManuscriptPrintHtml({
+      // Generate a REAL standard PDF binary Blob
+      const pdfBlob = await generateManuscriptPdfBlob({
         title: effectiveTitle,
         subtitle: bookSubtitle,
         author,
@@ -307,10 +287,23 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
         },
       });
 
-      const res = await printOrShareManuscript(effectiveTitle, fullPrintHtml);
+      const res = await exportManuscriptFile({
+        filename: `${effectiveTitle.replace(/\s+/g, '_')}.pdf`,
+        mimeType: 'application/pdf',
+        content: pdfBlob,
+        title: `${effectiveTitle} (PDF Manuscript)`,
+      });
+
       if (res.success) {
-        showNotice(res.method === 'capacitor-share' || res.method === 'web-share' ? 'Printable document shared!' : 'Print dialog opened!');
+        showNotice(
+          res.method === 'capacitor-share' || res.method === 'web-share'
+            ? 'PDF document shared successfully!'
+            : 'PDF downloaded successfully!'
+        );
       }
+    } catch (err) {
+      console.error('Failed to export PDF:', err);
+      showNotice('Failed to generate PDF document');
     } finally {
       setIsExporting(null);
     }
@@ -438,7 +431,7 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
           </label>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-            {/* 1. PDF / PRINT */}
+            {/* 1. REAL PDF DOCUMENT */}
             <button
               type="button"
               onClick={handlePrintPdf}
@@ -448,20 +441,20 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
               <div className="flex items-center justify-between mb-2">
                 <Printer className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                 <span className="text-[10px] uppercase tracking-wider font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded">
-                  {isExporting === 'pdf' ? 'Exporting...' : 'Recommended'}
+                  {isExporting === 'pdf' ? 'Generating...' : 'Standard PDF'}
                 </span>
               </div>
               <div>
                 <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
-                  {isExporting === 'pdf' ? 'Preparing PDF / Print...' : 'Print / Save as PDF'}
+                  {isExporting === 'pdf' ? 'Generating PDF Document...' : 'PDF Document (.pdf)'}
                 </div>
                 <div className="text-[11px] text-stone-500 dark:text-stone-400">
-                  Full multi-page document with cover & page numbers
+                  Standard multi-page PDF with cover & page numbers
                 </div>
               </div>
             </button>
 
-            {/* 2. WORD DOCX */}
+            {/* 2. REAL MICROSOFT WORD (.DOCX) */}
             <button
               type="button"
               onClick={handleDownloadDocx}
@@ -471,15 +464,15 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
               <div className="flex items-center justify-between mb-2">
                 <FileText className="w-5 h-5 text-blue-500" />
                 <span className="text-[10px] text-stone-400 font-mono">
-                  {isExporting === 'doc' ? 'Exporting...' : '.doc / .docx'}
+                  {isExporting === 'doc' ? 'Generating...' : '.docx'}
                 </span>
               </div>
               <div>
                 <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
-                  {isExporting === 'doc' ? 'Exporting Word Document...' : 'Microsoft Word'}
+                  {isExporting === 'doc' ? 'Generating Word (.docx)...' : 'Microsoft Word (.docx)'}
                 </div>
                 <div className="text-[11px] text-stone-500 dark:text-stone-400">
-                  Editable Word document file with chapter breaks
+                  Genuine Word document file with formatted chapters
                 </div>
               </div>
             </button>

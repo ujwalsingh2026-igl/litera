@@ -1,7 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory } from '@capacitor/filesystem';
-import { printManuscriptHtml } from './printManuscript';
 
 export interface ExportFileOptions {
   filename: string;
@@ -17,7 +16,7 @@ export interface ExportResult {
 }
 
 /**
- * Converts Blob or string to base64 string
+ * Converts Blob or string to base64 string for Capacitor Filesystem
  */
 async function toBase64(content: string | Blob): Promise<string> {
   if (typeof content === 'string') {
@@ -37,7 +36,8 @@ async function toBase64(content: string | Blob): Promise<string> {
     reader.onloadend = () => {
       const dataUrl = reader.result as string;
       // Strip data:*/*;base64, prefix
-      const base64 = dataUrl.split(',')[1] || '';
+      const commaIdx = dataUrl.indexOf(',');
+      const base64 = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl;
       resolve(base64);
     };
     reader.onerror = reject;
@@ -47,7 +47,7 @@ async function toBase64(content: string | Blob): Promise<string> {
 
 /**
  * Universally exports or shares files across:
- * 1. Android/iOS Capacitor APK (using Filesystem.writeFile + Share.share)
+ * 1. Android/iOS Capacitor APK (using Filesystem.writeFile with FileProvider and Share.share { files: [...] })
  * 2. Mobile web (using navigator.share with File if supported)
  * 3. Desktop web (using standard blob object URL / direct download)
  */
@@ -58,6 +58,20 @@ export async function exportManuscriptFile(options: ExportFileOptions): Promise<
   if (Capacitor.isNativePlatform()) {
     try {
       const base64Data = await toBase64(content);
+
+      // Save a copy in Documents folder for easy offline file browsing if permitted
+      try {
+        await Filesystem.writeFile({
+          path: filename,
+          data: base64Data,
+          directory: Directory.Documents,
+          recursive: true,
+        });
+      } catch {
+        // Documents folder write may require extra permissions on some Android versions, continue to Cache
+      }
+
+      // Write to Cache directory (guaranteed by FileProvider paths)
       const writeResult = await Filesystem.writeFile({
         path: filename,
         data: base64Data,
@@ -65,18 +79,25 @@ export async function exportManuscriptFile(options: ExportFileOptions): Promise<
         recursive: true,
       });
 
+      // CRITICAL FOR ANDROID:
+      // Pass ONLY `files: [writeResult.uri]` so Capacitor SharePlugin triggers `shareFiles()`
+      // with FileProvider content URI, EXTRA_STREAM, and FLAG_GRANT_READ_URI_PERMISSION.
+      // Do NOT pass `text` or `url` which causes Android to treat it as plain text!
       await Share.share({
         title,
-        text: `Exported manuscript from Literia: ${filename}`,
-        url: writeResult.uri,
-        dialogTitle: `Export ${filename}`,
+        files: [writeResult.uri],
+        dialogTitle: `Save or Share ${filename}`,
       });
 
       return { success: true, method: 'capacitor-share' };
     } catch (err: any) {
-      console.warn('Native Capacitor share failed, trying fallback:', err);
-      // If user dismissed share sheet, consider it handled
-      if (err?.message?.includes('canceled') || err?.message?.includes('cancelled')) {
+      console.warn('Native Capacitor share failed, falling back:', err);
+      // If user dismissed or cancelled the share dialog, consider it handled
+      if (
+        err?.message?.includes('canceled') ||
+        err?.message?.includes('cancelled') ||
+        err?.message?.includes('Share canceled')
+      ) {
         return { success: true, method: 'capacitor-share' };
       }
     }
@@ -91,7 +112,6 @@ export async function exportManuscriptFile(options: ExportFileOptions): Promise<
       if (navigator.canShare({ files: [file] })) {
         await navigator.share({
           title,
-          text: `Literia Manuscript: ${filename}`,
           files: [file],
         });
         return { success: true, method: 'web-share' };
@@ -115,9 +135,11 @@ export async function exportManuscriptFile(options: ExportFileOptions): Promise<
     document.body.appendChild(a);
     a.click();
     setTimeout(() => {
-      document.body.removeChild(a);
+      if (document.body.contains(a)) {
+        document.body.removeChild(a);
+      }
       URL.revokeObjectURL(url);
-    }, 1500);
+    }, 2000);
 
     return { success: true, method: 'download' };
   } catch (downloadErr: any) {
@@ -127,39 +149,5 @@ export async function exportManuscriptFile(options: ExportFileOptions): Promise<
       method: 'download',
       error: downloadErr?.message || 'Failed to download file',
     };
-  }
-}
-
-/**
- * Handles printing or native sharing of printable manuscript HTML on mobile and desktop
- */
-export async function printOrShareManuscript(
-  title: string,
-  fullHtml: string
-): Promise<ExportResult> {
-  const filename = `${title.replace(/\s+/g, '_')}_Printable.html`;
-
-  if (Capacitor.isNativePlatform()) {
-    // In native app, write HTML file and invoke native Share Sheet so user can open in Chrome, print, or save to Drive/Files
-    return exportManuscriptFile({
-      filename,
-      mimeType: 'text/html',
-      content: fullHtml,
-      title: `${title} (Printable / PDF)`,
-    });
-  }
-
-  // On Web: invoke iframe print
-  try {
-    printManuscriptHtml(fullHtml);
-    return { success: true, method: 'download' };
-  } catch (err) {
-    // Fallback to sharing the HTML file if print triggers an exception
-    return exportManuscriptFile({
-      filename,
-      mimeType: 'text/html',
-      content: fullHtml,
-      title,
-    });
   }
 }
