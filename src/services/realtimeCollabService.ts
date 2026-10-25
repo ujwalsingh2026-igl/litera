@@ -32,6 +32,7 @@ class RealtimeCollabService {
   private activeCollaborators: Map<string, CollaboratorInfo> = new Map();
   private lastSentContent = '';
   private lastReceivedTimestamp = 0;
+  private broadcastDebounceTimer: number | null = null;
 
   private contentListeners: Set<ContentListener> = new Set();
   private collabListeners: Set<CollaboratorsListener> = new Set();
@@ -162,30 +163,37 @@ class RealtimeCollabService {
   }
 
   /**
-   * Broadcast an edit made in the editor to all peers in the room
+   * Broadcast an edit made in the editor to all peers in the room (debounced to avoid network storms)
    */
   broadcastEdit(_docId: string, contentHtml: string, title?: string): void {
     if (!this.activeRoomId || !this.currentUser) return;
     if (contentHtml === this.lastSentContent) return;
 
-    this.lastSentContent = contentHtml;
-    const now = Date.now();
+    if (this.broadcastDebounceTimer) {
+      window.clearTimeout(this.broadcastDebounceTimer);
+    }
 
-    const msg: CollabMessage = {
-      type: 'edit',
-      roomId: this.activeRoomId,
-      senderId: this.currentUser.id,
-      senderName: this.currentUser.displayName || 'Author',
-      senderColor: this.currentUser.avatarColor || '#d97706',
-      contentHtml,
-      title,
-      timestamp: now,
-    };
+    this.broadcastDebounceTimer = window.setTimeout(() => {
+      if (!this.activeRoomId || !this.currentUser) return;
+      this.lastSentContent = contentHtml;
+      const now = Date.now();
 
-    this.broadcastMessage(msg);
+      const msg: CollabMessage = {
+        type: 'edit',
+        roomId: this.activeRoomId,
+        senderId: this.currentUser.id,
+        senderName: this.currentUser.displayName || 'Author',
+        senderColor: this.currentUser.avatarColor || '#d97706',
+        contentHtml,
+        title,
+        timestamp: now,
+      };
 
-    // Also persist cloud snapshot to the room topic with caching enabled
-    this.persistCloudSnapshot(this.activeRoomId, contentHtml, title);
+      this.broadcastMessage(msg);
+
+      // Also persist cloud snapshot to the room topic with caching enabled
+      this.persistCloudSnapshot(this.activeRoomId, contentHtml, title);
+    }, 350);
   }
 
   /**
@@ -372,6 +380,10 @@ class RealtimeCollabService {
    * Get currently active room ID
    */
   getActiveRoomId(): string | null {
+    return this.activeRoomId;
+  }
+
+  getRoomId(): string | null {
     return this.activeRoomId;
   }
 

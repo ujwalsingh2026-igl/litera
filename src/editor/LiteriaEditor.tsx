@@ -156,27 +156,23 @@ export const LiteriaEditor: React.FC = () => {
       const newStats = calculateEnhancedStats(doc?.type || 'blank', text, html);
       setStats(newStats);
 
-      // Smooth dynamic scrolling so the background page moves with the writing
-      window.requestAnimationFrame(() => {
-        const selection = window.getSelection();
-        if (selection && selection.focusNode) {
-          const el =
-            selection.focusNode instanceof HTMLElement
-              ? selection.focusNode
-              : selection.focusNode.parentElement;
-          if (el) {
-            if (typewriterMode) {
-              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            } else {
-              const rect = el.getBoundingClientRect();
-              const viewportHeight = window.innerHeight;
-              if (rect.bottom > viewportHeight - 160) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      // Smooth dynamic scrolling only for typewriter mode; in normal mode let browser natively keep typing caret in view without forcing container scroll
+      if (typewriterMode) {
+        window.requestAnimationFrame(() => {
+          const selection = window.getSelection();
+          if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            if (rect && rect.top > 0) {
+              const targetY = window.innerHeight / 2;
+              const delta = rect.top - targetY;
+              if (Math.abs(delta) > 30) {
+                window.scrollBy({ top: delta, behavior: 'smooth' });
               }
             }
           }
-        }
-      });
+        });
+      }
 
       // Emergency snapshot in localStorage (crash-proofing) & update latest draft ref
       if (currentDocIdRef.current) {
@@ -191,8 +187,10 @@ export const LiteriaEditor: React.FC = () => {
         } catch {
           // ignore quota exceeded
         }
-        // Broadcast real-time edit to active collaboration room
-        realtimeCollabService.broadcastEdit(currentDocIdRef.current, html, title);
+        // Broadcast real-time edit only if explicitly connected to a collaboration room
+        if (realtimeCollabService.getRoomId()) {
+          realtimeCollabService.broadcastEdit(currentDocIdRef.current, html, title);
+        }
       }
 
       // Fast debounced save to IndexedDB & Google Cloud Vault (400ms)
@@ -333,11 +331,27 @@ export const LiteriaEditor: React.FC = () => {
       const customEvent = event as CustomEvent<{ documentId?: string; doc?: Document }>;
       const updatedId = customEvent.detail?.documentId;
       if (updatedId && doc && updatedId === doc.id) {
+        // CRITICAL: If the user is currently focused/typing in the editor, NEVER overwrite!
+        // The in-memory editor state is authoritative.
+        if (editor?.isFocused) {
+          return;
+        }
+
         const fresh = customEvent.detail?.doc || (await documentService.getById(updatedId));
         if (fresh && fresh.content) {
-          const currentText = editor?.getText().trim() || '';
-          if (editor && (!hasUnsaved || currentText.length === 0)) {
+          const currentHtml = editor?.getHTML() || '';
+          if (editor && !hasUnsaved && currentHtml !== fresh.content) {
+            const { from, to } = editor.state.selection;
             editor.commands.setContent(fresh.content, { emitUpdate: false });
+            const maxPos = editor.state.doc.content.size;
+            try {
+              editor.commands.setTextSelection({
+                from: Math.min(from, maxPos),
+                to: Math.min(to, maxPos),
+              });
+            } catch {
+              // Ignore if selection couldn't be restored
+            }
             setDoc(fresh);
             setTitle(fresh.title);
             setStats(fresh.stats);
@@ -401,9 +415,23 @@ export const LiteriaEditor: React.FC = () => {
   useEffect(() => {
     const unsubContent = realtimeCollabService.onContent((remoteHtml, _senderName, remoteTitle) => {
       if (editor) {
+        // If author is actively typing, do not disrupt their in-progress typing session
+        if (editor.isFocused) {
+          return;
+        }
         const currentHtml = editor.getHTML();
         if (currentHtml !== remoteHtml) {
+          const { from, to } = editor.state.selection;
           editor.commands.setContent(remoteHtml, { emitUpdate: false });
+          const maxPos = editor.state.doc.content.size;
+          try {
+            editor.commands.setTextSelection({
+              from: Math.min(from, maxPos),
+              to: Math.min(to, maxPos),
+            });
+          } catch {
+            // Ignore
+          }
         }
       }
       if (remoteTitle && remoteTitle !== title) {
@@ -419,20 +447,14 @@ export const LiteriaEditor: React.FC = () => {
       setIsCollabActive(Boolean(roomId));
     });
 
-    // Automatic Live Synchronization across author's devices (Google Docs / MS Word style)
+    // Only join real-time collaboration room if explicitly in collaboration mode (via invite link / hash)
     if (typeof window !== 'undefined' && user && doc) {
       const hash = window.location.hash;
-      let targetRoom: string;
-
       if (hash.includes('collab=')) {
-        targetRoom = hash.split('collab=')[1].split('&')[0].replace(/[^A-Z0-9_-]/g, '');
-      } else {
-        // Automatic deterministic room based on document ID so all author's logged in devices sync live
-        targetRoom = `DOC-${doc.id.replace(/[^A-Z0-9_-]/gi, '').slice(0, 12).toUpperCase()}`;
-      }
-
-      if (targetRoom) {
-        realtimeCollabService.joinRoom(targetRoom, user, doc.content || '', doc.title || '');
+        const targetRoom = hash.split('collab=')[1].split('&')[0].replace(/[^A-Z0-9_-]/g, '');
+        if (targetRoom) {
+          realtimeCollabService.joinRoom(targetRoom, user, doc.content || '', doc.title || '');
+        }
       }
     }
 
