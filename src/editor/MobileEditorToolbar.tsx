@@ -75,7 +75,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
 }) => {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
-  const [caseMenuOpen, setCaseMenuOpen] = useState(false);
+  const [caseSheetOpen, setCaseSheetOpen] = useState(false);
 
   // Avoid virtual keyboard overlap on mobile phones
   useEffect(() => {
@@ -109,7 +109,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
 
   const handleApplyCase = (type: CaseType) => {
     transformTipTapCase(editor, type);
-    setCaseMenuOpen(false);
+    setCaseSheetOpen(false);
     setSheetOpen(false);
   };
 
@@ -250,65 +250,18 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
 
           <div className="h-5 w-[1px] bg-stone-200 dark:bg-stone-800 shrink-0 mx-0.5" />
 
-          {/* 3. Text Case Handling Quick Trigger */}
-          <div className="relative shrink-0">
+          {/* 3. Text Case Handling Trigger */}
+          <div className="shrink-0">
             <button
               type="button"
-              onClick={() => setCaseMenuOpen((prev) => !prev)}
-              className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700 transition"
+              onClick={() => setCaseSheetOpen(true)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 text-stone-800 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700 transition active:scale-95 shadow-sm"
+              aria-label="Change Text Case"
               title="Text Case Transformations (Aa)"
             >
               <CaseSensitive className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
               <span>Aa</span>
             </button>
-
-            {caseMenuOpen && (
-              <div className="absolute left-0 bottom-10 z-[90] p-1.5 bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl shadow-2xl flex flex-col gap-1 min-w-[170px] animate-in fade-in zoom-in-95">
-                <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-stone-400 font-semibold border-b border-stone-100 dark:border-stone-800">
-                  Case Transformations
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleApplyCase('sentence')}
-                  className="px-2.5 py-1.5 rounded-lg text-xs text-left hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-200 flex flex-col"
-                >
-                  <span className="font-semibold">Sentence case</span>
-                  <span className="text-[10px] text-stone-400">Capitalize sentences</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleApplyCase('title')}
-                  className="px-2.5 py-1.5 rounded-lg text-xs text-left hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-200 flex flex-col"
-                >
-                  <span className="font-semibold">Title Case</span>
-                  <span className="text-[10px] text-stone-400">Capitalize Each Word</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleApplyCase('uppercase')}
-                  className="px-2.5 py-1.5 rounded-lg text-xs text-left hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-200 flex flex-col"
-                >
-                  <span className="font-bold">UPPERCASE</span>
-                  <span className="text-[10px] text-stone-400 font-mono">ALL CAPS</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleApplyCase('lowercase')}
-                  className="px-2.5 py-1.5 rounded-lg text-xs text-left hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-200 flex flex-col"
-                >
-                  <span className="font-semibold">lowercase</span>
-                  <span className="text-[10px] text-stone-400 font-mono">all lower</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleApplyCase('toggle')}
-                  className="px-2.5 py-1.5 rounded-lg text-xs text-left hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-200 flex flex-col"
-                >
-                  <span className="font-semibold">tOGGLE cASE</span>
-                  <span className="text-[10px] text-stone-400">Invert case</span>
-                </button>
-              </div>
-            )}
           </div>
 
           <div className="h-5 w-[1px] bg-stone-200 dark:bg-stone-800 shrink-0 mx-0.5" />
@@ -1240,6 +1193,116 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      </BottomSheet>
+
+      {/* Dedicated Text Case Handling Bottom Sheet with full backdrop shielding */}
+      <BottomSheet
+        isOpen={caseSheetOpen}
+        onClose={() => setCaseSheetOpen(false)}
+        title={
+          <div className="flex items-center gap-2">
+            <CaseSensitive className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <span>Text Case Handling</span>
+          </div>
+        }
+      >
+        <div className="space-y-3 pb-6 text-xs">
+          <p className="text-stone-500 dark:text-stone-400 text-xs">
+            Transform selected text or the active sentence block:
+          </p>
+
+          <div className="grid grid-cols-1 gap-2.5">
+            <button
+              type="button"
+              onClick={() => handleApplyCase('sentence')}
+              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-500/50 bg-stone-50/60 dark:bg-stone-800/40 hover:bg-amber-500/10 text-left transition flex items-center justify-between group active:scale-[0.99]"
+            >
+              <div>
+                <div className="font-semibold text-sm text-stone-900 dark:text-stone-100 group-hover:text-amber-800 dark:group-hover:text-amber-300">
+                  Sentence case
+                </div>
+                <div className="text-xs text-stone-500 dark:text-stone-400">
+                  Capitalize the first letter of each sentence
+                </div>
+              </div>
+              <span className="text-xs font-mono font-medium text-stone-600 dark:text-stone-300 bg-stone-200/60 dark:bg-stone-700/60 px-2.5 py-1 rounded-md">
+                Aa bb. Cc dd.
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleApplyCase('title')}
+              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-500/50 bg-stone-50/60 dark:bg-stone-800/40 hover:bg-amber-500/10 text-left transition flex items-center justify-between group active:scale-[0.99]"
+            >
+              <div>
+                <div className="font-semibold text-sm text-stone-900 dark:text-stone-100 group-hover:text-amber-800 dark:group-hover:text-amber-300">
+                  Title Case
+                </div>
+                <div className="text-xs text-stone-500 dark:text-stone-400">
+                  Capitalize the first letter of every major word
+                </div>
+              </div>
+              <span className="text-xs font-mono font-medium text-stone-600 dark:text-stone-300 bg-stone-200/60 dark:bg-stone-700/60 px-2.5 py-1 rounded-md">
+                Aa Bb Cc Dd
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleApplyCase('uppercase')}
+              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-500/50 bg-stone-50/60 dark:bg-stone-800/40 hover:bg-amber-500/10 text-left transition flex items-center justify-between group active:scale-[0.99]"
+            >
+              <div>
+                <div className="font-bold text-sm text-stone-900 dark:text-stone-100 group-hover:text-amber-800 dark:group-hover:text-amber-300">
+                  UPPERCASE
+                </div>
+                <div className="text-xs text-stone-500 dark:text-stone-400">
+                  Convert all letters to capital format
+                </div>
+              </div>
+              <span className="text-xs font-mono font-bold text-stone-600 dark:text-stone-300 bg-stone-200/60 dark:bg-stone-700/60 px-2.5 py-1 rounded-md">
+                ALL CAPS
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleApplyCase('lowercase')}
+              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-500/50 bg-stone-50/60 dark:bg-stone-800/40 hover:bg-amber-500/10 text-left transition flex items-center justify-between group active:scale-[0.99]"
+            >
+              <div>
+                <div className="font-semibold text-sm text-stone-900 dark:text-stone-100 group-hover:text-amber-800 dark:group-hover:text-amber-300">
+                  lowercase
+                </div>
+                <div className="text-xs text-stone-500 dark:text-stone-400">
+                  Convert all letters to small format
+                </div>
+              </div>
+              <span className="text-xs font-mono font-medium text-stone-600 dark:text-stone-300 bg-stone-200/60 dark:bg-stone-700/60 px-2.5 py-1 rounded-md">
+                all lower
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleApplyCase('toggle')}
+              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-amber-500/50 bg-stone-50/60 dark:bg-stone-800/40 hover:bg-amber-500/10 text-left transition flex items-center justify-between group active:scale-[0.99]"
+            >
+              <div>
+                <div className="font-semibold text-sm text-stone-900 dark:text-stone-100 group-hover:text-amber-800 dark:group-hover:text-amber-300">
+                  tOGGLE cASE
+                </div>
+                <div className="text-xs text-stone-500 dark:text-stone-400">
+                  Invert the casing of each character
+                </div>
+              </div>
+              <span className="text-xs font-mono font-medium text-stone-600 dark:text-stone-300 bg-stone-200/60 dark:bg-stone-700/60 px-2.5 py-1 rounded-md">
+                iNVERT cASE
+              </span>
+            </button>
           </div>
         </div>
       </BottomSheet>
