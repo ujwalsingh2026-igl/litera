@@ -66,6 +66,9 @@ export const LiteriaEditor: React.FC = () => {
   );
 
   const saveTimeoutRef = useRef<number | null>(null);
+  const titleSaveTimeoutRef = useRef<number | null>(null);
+  const titleRef = useRef<string>(activeDocument?.title || 'Untitled');
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
   const currentDocIdRef = useRef<string | null>(activeDocument?.id || null);
   const loadedDocIdRef = useRef<string | null>(null);
   const latestDraftRef = useRef<{ id: string; html: string; text: string } | null>(null);
@@ -84,17 +87,22 @@ export const LiteriaEditor: React.FC = () => {
   // Sync when activeDocument changes from outside
   useEffect(() => {
     if (activeDocument) {
-      setDoc(activeDocument);
-      setTitle(activeDocument.title);
-      setStats(
-        activeDocument.stats ||
-          calculateEnhancedStats(
-            activeDocument.type,
-            (activeDocument.content || '').replace(/<[^>]+>/g, ' '),
-            activeDocument.content || ''
-          )
-      );
-      currentDocIdRef.current = activeDocument.id;
+      // Guard: Only switch document if the document ID actually changed!
+      // If we are already on this document, do NOT wipe the in-memory title or state!
+      if (currentDocIdRef.current !== activeDocument.id) {
+        currentDocIdRef.current = activeDocument.id;
+        setDoc(activeDocument);
+        setTitle(activeDocument.title);
+        titleRef.current = activeDocument.title;
+        setStats(
+          activeDocument.stats ||
+            calculateEnhancedStats(
+              activeDocument.type,
+              (activeDocument.content || '').replace(/<[^>]+>/g, ' '),
+              activeDocument.content || ''
+            )
+        );
+      }
     } else {
       // Auto-load latest document or create initial one if none active
       (async () => {
@@ -189,7 +197,7 @@ export const LiteriaEditor: React.FC = () => {
         }
         // Broadcast real-time edit only if explicitly connected to a collaboration room
         if (realtimeCollabService.getRoomId()) {
-          realtimeCollabService.broadcastEdit(currentDocIdRef.current, html, title);
+          realtimeCollabService.broadcastEdit(currentDocIdRef.current, html, titleRef.current);
         }
       }
 
@@ -203,6 +211,7 @@ export const LiteriaEditor: React.FC = () => {
         setIsSaving(true);
         try {
           await documentService.update(currentDocIdRef.current, {
+            title: titleRef.current,
             content: html,
             plainTextPreview: text.slice(0, 160),
           });
@@ -227,6 +236,10 @@ export const LiteriaEditor: React.FC = () => {
       window.clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
     }
+    if (titleSaveTimeoutRef.current) {
+      window.clearTimeout(titleSaveTimeoutRef.current);
+      titleSaveTimeoutRef.current = null;
+    }
 
     const currentDraft = latestDraftRef.current;
     const docId = currentDraft?.id || currentDocIdRef.current;
@@ -236,7 +249,7 @@ export const LiteriaEditor: React.FC = () => {
     const text = currentDraft?.text || (editor ? editor.getText() : '');
 
     // Skip if completely empty without draft
-    if (!html && !text) return;
+    if (!html && !text && !titleRef.current) return;
 
     // Synchronously write to emergency crash snapshot
     try {
@@ -246,6 +259,7 @@ export const LiteriaEditor: React.FC = () => {
 
     // Flush directly to Dexie IndexedDB
     documentService.update(docId, {
+      title: titleRef.current,
       content: html,
       plainTextPreview: text.slice(0, 160),
     }).catch(console.error);
@@ -331,9 +345,10 @@ export const LiteriaEditor: React.FC = () => {
       const customEvent = event as CustomEvent<{ documentId?: string; doc?: Document }>;
       const updatedId = customEvent.detail?.documentId;
       if (updatedId && doc && updatedId === doc.id) {
-        // CRITICAL: If the user is currently focused/typing in the editor, NEVER overwrite!
-        // The in-memory editor state is authoritative.
-        if (editor?.isFocused) {
+        // CRITICAL: If the user is currently focused/typing in the editor OR in the title input, NEVER overwrite!
+        // The in-memory editor and title state are authoritative.
+        const isTitleFocused = document.activeElement === titleInputRef.current;
+        if (editor?.isFocused || isTitleFocused) {
           return;
         }
 
@@ -353,7 +368,10 @@ export const LiteriaEditor: React.FC = () => {
               // Ignore if selection couldn't be restored
             }
             setDoc(fresh);
-            setTitle(fresh.title);
+            if (!isTitleFocused) {
+              setTitle(fresh.title);
+              titleRef.current = fresh.title;
+            }
             setStats(fresh.stats);
             setHasUnsaved(false);
           }
@@ -414,9 +432,10 @@ export const LiteriaEditor: React.FC = () => {
   // Real-time peer editing listener and presence sync
   useEffect(() => {
     const unsubContent = realtimeCollabService.onContent((remoteHtml, _senderName, remoteTitle) => {
+      const isTitleFocused = document.activeElement === titleInputRef.current;
       if (editor) {
         // If author is actively typing, do not disrupt their in-progress typing session
-        if (editor.isFocused) {
+        if (editor.isFocused || isTitleFocused) {
           return;
         }
         const currentHtml = editor.getHTML();
@@ -434,8 +453,9 @@ export const LiteriaEditor: React.FC = () => {
           }
         }
       }
-      if (remoteTitle && remoteTitle !== title) {
+      if (remoteTitle && remoteTitle !== titleRef.current && !isTitleFocused) {
         setTitle(remoteTitle);
+        titleRef.current = remoteTitle;
       }
     });
 
@@ -472,40 +492,75 @@ export const LiteriaEditor: React.FC = () => {
     if (saveTimeoutRef.current) {
       window.clearTimeout(saveTimeoutRef.current);
     }
+    if (titleSaveTimeoutRef.current) {
+      window.clearTimeout(titleSaveTimeoutRef.current);
+    }
     setIsSaving(true);
+    const currentTitle = titleRef.current;
     const html = editor.getHTML();
     const text = editor.getText();
     try {
       await documentService.update(currentDocIdRef.current, {
-        title,
+        title: currentTitle,
         content: html,
         plainTextPreview: text.slice(0, 160),
       });
       setHasUnsaved(false);
+      setActiveDocument((prev: Document | null) => (prev && prev.id === currentDocIdRef.current ? { ...prev, title: currentTitle } : prev));
       googleCloudSyncService.queueOrSyncDocument(currentDocIdRef.current, user);
     } finally {
       setIsSaving(false);
     }
-  }, [editor, title, user]);
+  }, [editor, user]);
 
-  // Title change handler
+  // Title change handler with dedicated debounce timer & instant state sync
   const handleTitleChange = (newTitle: string) => {
     setTitle(newTitle);
+    titleRef.current = newTitle;
     setHasUnsaved(true);
-    if (saveTimeoutRef.current) {
-      window.clearTimeout(saveTimeoutRef.current);
+
+    // Keep doc in sync immediately in local memory so UI stays consistent
+    setDoc((prev) => (prev ? { ...prev, title: newTitle } : prev));
+
+    if (titleSaveTimeoutRef.current) {
+      window.clearTimeout(titleSaveTimeoutRef.current);
     }
-    saveTimeoutRef.current = window.setTimeout(async () => {
-      if (!currentDocIdRef.current) return;
+
+    titleSaveTimeoutRef.current = window.setTimeout(async () => {
+      const docId = currentDocIdRef.current;
+      if (!docId) return;
       setIsSaving(true);
       try {
-        await documentService.rename(currentDocIdRef.current, newTitle);
+        await documentService.rename(docId, newTitle);
         setHasUnsaved(false);
-        googleCloudSyncService.queueOrSyncDocument(currentDocIdRef.current, user);
+        setActiveDocument((prev: Document | null) => (prev && prev.id === docId ? { ...prev, title: newTitle } : prev));
+        googleCloudSyncService.queueOrSyncDocument(docId, user);
       } finally {
         setIsSaving(false);
       }
-    }, 800);
+    }, 500);
+  };
+
+  // Immediate title commit on blur or Enter
+  const handleTitleBlur = async () => {
+    if (titleSaveTimeoutRef.current) {
+      window.clearTimeout(titleSaveTimeoutRef.current);
+      titleSaveTimeoutRef.current = null;
+    }
+    const docId = currentDocIdRef.current;
+    if (!docId) return;
+    const finalTitle = titleRef.current.trim() || 'Untitled Document';
+    setTitle(finalTitle);
+    titleRef.current = finalTitle;
+    setDoc((prev) => (prev ? { ...prev, title: finalTitle } : prev));
+    setActiveDocument((prev: Document | null) => (prev && prev.id === docId ? { ...prev, title: finalTitle } : prev));
+    try {
+      await documentService.rename(docId, finalTitle);
+      setHasUnsaved(false);
+      googleCloudSyncService.queueOrSyncDocument(docId, user);
+    } catch (e) {
+      console.warn('Failed to save title on blur:', e);
+    }
   };
 
   // Document Type Change Handler
@@ -541,6 +596,7 @@ export const LiteriaEditor: React.FC = () => {
     }
     editor.commands.setContent(targetChapter.content);
     setTitle(targetChapter.title);
+    titleRef.current = targetChapter.title;
     const updatedDoc: Document = {
       ...doc,
       title: targetChapter.title,
@@ -764,9 +820,18 @@ export const LiteriaEditor: React.FC = () => {
 
             {/* Document Title Input */}
             <input
+              ref={titleInputRef}
               type="text"
               value={title}
               onChange={(e) => handleTitleChange(e.target.value)}
+              onBlur={handleTitleBlur}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  e.currentTarget.blur();
+                  editor?.commands.focus('start');
+                }
+              }}
               placeholder="Untitled Document"
               className="w-full text-3xl sm:text-4xl font-serif font-bold text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] bg-transparent border-none outline-none focus:ring-0 tracking-tight transition-colors"
             />

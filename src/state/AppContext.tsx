@@ -29,7 +29,7 @@ interface AppContextType {
   navigateBack: () => void;
   navigationHistory: AppView[];
   activeDocument: Document | null;
-  setActiveDocument: (doc: Document | null) => void;
+  setActiveDocument: React.Dispatch<React.SetStateAction<Document | null>>;
   openDocument: (id: string) => Promise<void>;
   createDocumentAndOpen: (title?: string, type?: import('../types').DocumentType) => Promise<void>;
   

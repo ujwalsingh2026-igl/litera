@@ -93,6 +93,7 @@
 | **Client-Side Cryptography** | Author privacy is absolute; creative manuscripts contain unreleased intellectual property. | Documents are encrypted with AES-GCM-256 on device before leaving the browser. |
 | **Mobile Keyboard Adaptation** | Mobile viewports lose 40–50% vertical height when the soft keyboard is opened. | Bottom toolbars use horizontal smooth scrolling; modals use flex-column scrollable bodies with sticky action footers; popovers flip dynamically above the keyboard. |
 | **Deterministic APK Distribution** | Android users require a reliable standalone APK without relying on external app stores during beta testing. | Fast local Gradle builds (`cmd /c "cd android && gradlew.bat assembleDebug"`) copy directly to root `literia-app.apk`. |
+| **Decoupled Title State Invariant** | Editing document title must never be wiped by editor debounces, background sync echoes, or component re-renders. | Title uses dedicated `titleSaveTimeoutRef`, synchronous `titleRef`, and `titleInputRef` focus protection. `useEffect([activeDocument])` guards against overwriting the same loaded document ID. Title commits immediately on `onBlur` or Enter, keeping React state, AppContext, Dexie, and Cloud Vault in perfect lockstep. |
 
 ---
 
