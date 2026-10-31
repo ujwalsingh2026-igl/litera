@@ -173,6 +173,7 @@
 ### 📱 Mobile Usability & Ergonomics
 - [x] **Slidable Bottom Navigation Bar:** Horizontally scrolling mobile action bar housing all formatting tools, AI tools, case conversions, and export options.
 - [x] **Keyboard-Resistant Layouts:** Dynamic safe-area padding ensuring active controls remain visible when the on-screen keyboard expands.
+- [x] **Fresh Android APK Build:** Standalone production-grade Android debug package (`literia-app.apk`) compiled with Gradle 8.14.3 and Android SDK 36, containing zero-whitespace export engines and full mobile toolbars.
 
 ---
 
