@@ -3,7 +3,7 @@ import { Modal } from '../ui';
 import type { Chapter, BookRollupStats } from '../../types';
 import { Copy, Download, Check, FileText, Share2 } from 'lucide-react';
 import { exportManuscriptFile } from '../../utils/exportHelper';
-import { generateManuscriptPdfBlob } from '../../utils/pdfGenerator';
+import { generateManuscriptPdfBlob, parseHtmlToBlocks } from '../../utils/pdfGenerator';
 import { generateManuscriptDocxBlob } from '../../utils/docxGenerator';
 import { useApp } from '../../state';
 
@@ -55,9 +55,9 @@ export const ManuscriptCompileModal: React.FC<ManuscriptCompileModalProps> = ({
 
     chapters.forEach((c) => {
       output += `${c.title.toUpperCase()}\n\n`;
-      const plain = c.content.replace(/<[^>]+>/g, '\n').replace(/\n\s*\n/g, '\n\n').trim();
-      output += `${plain}\n\n`;
-      output += `* * *\n\n`;
+      const blocks = parseHtmlToBlocks(c.content || '');
+      output += blocks.map((b) => b.text).join('\n\n');
+      output += `\n\n* * *\n\n`;
     });
 
     return output;

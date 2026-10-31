@@ -9,6 +9,7 @@ import {
   BorderStyle,
 } from 'docx';
 import type { PrintManuscriptSection } from './printManuscript';
+import { parseHtmlToBlocks } from './pdfGenerator';
 
 export interface GenerateDocxOptions {
   title: string;
@@ -25,31 +26,11 @@ export interface GenerateDocxOptions {
 }
 
 /**
- * Extracts plain paragraphs and structure from HTML
+ * Extracts plain paragraphs and structure from HTML using the robust block parser.
  */
 function extractParagraphs(html: string): string[] {
-  if (typeof window === 'undefined') {
-    return html.replace(/<[^>]+>/g, '\n').split('\n').filter((l) => l.trim().length > 0);
-  }
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
-  const paragraphs: string[] = [];
-
-  const blockNodes = doc.querySelectorAll('p, h1, h2, h3, h4, blockquote, li, tr');
-  if (blockNodes.length > 0) {
-    blockNodes.forEach((node) => {
-      const text = node.textContent?.trim();
-      if (text) paragraphs.push(text);
-    });
-  } else {
-    const raw = html.replace(/<[^>]+>/g, '\n').split('\n');
-    raw.forEach((r) => {
-      const trimmed = r.trim();
-      if (trimmed) paragraphs.push(trimmed);
-    });
-  }
-
-  return paragraphs;
+  const blocks = parseHtmlToBlocks(html);
+  return blocks.map((b) => b.text).filter(Boolean);
 }
 
 /**

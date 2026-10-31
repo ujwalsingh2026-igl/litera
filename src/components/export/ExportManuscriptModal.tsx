@@ -7,7 +7,7 @@ import {
   type PrintManuscriptSection,
 } from '../../utils/printManuscript';
 import { exportManuscriptFile } from '../../utils/exportHelper';
-import { generateManuscriptPdfBlob } from '../../utils/pdfGenerator';
+import { generateManuscriptPdfBlob, parseHtmlToBlocks } from '../../utils/pdfGenerator';
 import { generateManuscriptDocxBlob } from '../../utils/docxGenerator';
 import {
   Printer,
@@ -101,7 +101,8 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
       if (sectionsToExport.length > 1 && sec.title) {
         text += `\n${sec.title.toUpperCase()}\n----------------------------------------\n\n`;
       }
-      text += (sec.contentHtml || '').replace(/<[^>]+>/g, '\n').replace(/\n\s*\n/g, '\n\n').trim();
+      const blocks = parseHtmlToBlocks(sec.contentHtml || '');
+      text += blocks.map((b) => b.text).join('\n\n');
       if (idx < sectionsToExport.length - 1) {
         text += '\n\n* * *\n\n';
       }
@@ -171,9 +172,17 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
         if (sectionsToExport.length > 1 && sec.title) {
           md += `\n\n## ${sec.title}\n\n`;
         }
-        md += (sec.contentHtml || '').replace(/<p>/g, '').replace(/<\/p>/g, '\n\n').replace(/<[^>]+>/g, '');
+        const blocks = parseHtmlToBlocks(sec.contentHtml || '');
+        blocks.forEach((b) => {
+          if (b.type === 'h1') md += `# ${b.text}\n\n`;
+          else if (b.type === 'h2') md += `## ${b.text}\n\n`;
+          else if (b.type === 'h3') md += `### ${b.text}\n\n`;
+          else if (b.type === 'quote') md += `> ${b.text}\n\n`;
+          else if (b.type === 'li') md += `${b.text}\n`;
+          else md += `${b.text}\n\n`;
+        });
         if (idx < sectionsToExport.length - 1) {
-          md += '\n\n* * *\n\n';
+          md += '* * *\n\n';
         }
       });
 

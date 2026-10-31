@@ -20,47 +20,112 @@ export interface GeneratePdfOptions {
   };
 }
 
+export interface ManuscriptBlock {
+  text: string;
+  type: 'p' | 'h1' | 'h2' | 'h3' | 'quote' | 'li';
+}
+
 /**
- * Parses HTML content into clean blocks of text with types (p, h1, h2, h3, quote, li)
+ * Parses HTML content into clean blocks of text with types (p, h1, h2, h3, quote, li).
+ * Robustly traverses wrapper divs and extracts every paragraph and dialogue line distinctly.
  */
-function parseHtmlToBlocks(html: string): Array<{ text: string; type: 'p' | 'h1' | 'h2' | 'h3' | 'quote' | 'li' }> {
+export function parseHtmlToBlocks(html: string): ManuscriptBlock[] {
+  if (!html || !html.trim()) return [];
+
+  // Replace <br> variants with newline character so internal line breaks are preserved
+  const normalizedHtml = html
+    .replace(/<br\s*[\/]?>/gi, '\n')
+    .replace(/&nbsp;/gi, ' ');
+
   if (typeof window === 'undefined') {
-    return [{ text: html.replace(/<[^>]+>/g, ' ').trim(), type: 'p' }];
+    return normalizedHtml
+      .replace(/<[^>]+>/g, '\n')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((text) => ({ text, type: 'p' }));
   }
 
   const parser = new DOMParser();
-  const doc = parser.parseFromString(`<div>${html}</div>`, 'text/html');
-  const blocks: Array<{ text: string; type: 'p' | 'h1' | 'h2' | 'h3' | 'quote' | 'li' }> = [];
+  const doc = parser.parseFromString(`<body>${normalizedHtml}</body>`, 'text/html');
+  const blocks: ManuscriptBlock[] = [];
 
   const traverse = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent || '';
+      const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        blocks.push({ text: line, type: 'p' });
+      }
+      return;
+    }
+
     if (node.nodeType === Node.ELEMENT_NODE) {
       const el = node as HTMLElement;
       const tag = el.tagName.toLowerCase();
 
-      if (['h1', 'h2', 'h3'].includes(tag)) {
+      // Heading elements
+      if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
         const text = el.textContent?.trim();
-        if (text) blocks.push({ text, type: tag as 'h1' | 'h2' | 'h3' });
-        return;
-      }
-      if (tag === 'blockquote') {
-        const text = el.textContent?.trim();
-        if (text) blocks.push({ text, type: 'quote' });
-        return;
-      }
-      if (tag === 'li') {
-        const text = el.textContent?.trim();
-        if (text) blocks.push({ text: `• ${text}`, type: 'li' });
-        return;
-      }
-      if (tag === 'p' || tag === 'div') {
-        const text = el.textContent?.trim();
-        if (text) blocks.push({ text, type: 'p' });
+        if (text) {
+          const type = tag === 'h1' ? 'h1' : tag === 'h2' ? 'h2' : 'h3';
+          blocks.push({ text, type });
+        }
         return;
       }
 
-      // Check child nodes for nested containers
-      for (let i = 0; i < el.childNodes.length; i++) {
-        traverse(el.childNodes[i]);
+      // Blockquotes
+      if (tag === 'blockquote') {
+        const text = el.textContent || '';
+        const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+        for (const line of lines) {
+          blocks.push({ text: line, type: 'quote' });
+        }
+        return;
+      }
+
+      // List items
+      if (tag === 'li') {
+        const text = el.textContent?.trim();
+        if (text) {
+          blocks.push({ text: `• ${text}`, type: 'li' });
+        }
+        return;
+      }
+
+      // Horizontal dividers / asterisms
+      if (tag === 'hr') {
+        blocks.push({ text: '* * *', type: 'p' });
+        return;
+      }
+
+      // Paragraph elements
+      if (tag === 'p') {
+        const text = el.textContent || '';
+        const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+        for (const line of lines) {
+          blocks.push({ text: line, type: 'p' });
+        }
+        return;
+      }
+
+      // Containers (div, section, article, main, table, etc.):
+      // Check if it contains block-level child elements
+      const hasBlockChildren =
+        el.querySelector('p, h1, h2, h3, h4, h5, h6, blockquote, ul, ol, li, div, hr, table') !== null;
+
+      if (hasBlockChildren) {
+        for (let i = 0; i < el.childNodes.length; i++) {
+          traverse(el.childNodes[i]);
+        }
+        return;
+      }
+
+      // Leaf container element without nested block children
+      const text = el.textContent || '';
+      const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        blocks.push({ text: line, type: 'p' });
       }
     }
   };
@@ -69,13 +134,16 @@ function parseHtmlToBlocks(html: string): Array<{ text: string; type: 'p' | 'h1'
     traverse(doc.body.childNodes[i]);
   }
 
-  // Fallback if no block elements were detected
+  // Fallback if no block elements were detected (e.g. pure raw unformatted text)
   if (blocks.length === 0) {
-    const rawText = html.replace(/<[^>]+>/g, '\n').split('\n');
-    rawText.forEach((line) => {
-      const trimmed = line.trim();
-      if (trimmed) blocks.push({ text: trimmed, type: 'p' });
-    });
+    const rawLines = normalizedHtml
+      .replace(/<[^>]+>/g, '\n')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    for (const line of rawLines) {
+      blocks.push({ text: line, type: 'p' });
+    }
   }
 
   return blocks;
@@ -177,47 +245,47 @@ export async function generateManuscriptPdfBlob(options: GeneratePdfOptions): Pr
       let fontSize = 11;
       let fontStyle: 'normal' | 'bold' | 'italic' = 'normal';
       let fontColor = [35, 30, 25];
-      let lineSpacing = 6;
-      let extraPadding = 3;
+      let extraPadding = 3.5;
 
       if (block.type === 'h1') {
         fontSize = 15;
         fontStyle = 'bold';
-        lineSpacing = 8;
-        extraPadding = 4;
+        extraPadding = 5;
       } else if (block.type === 'h2') {
         fontSize = 13;
         fontStyle = 'bold';
-        lineSpacing = 7;
-        extraPadding = 3;
+        extraPadding = 4;
       } else if (block.type === 'h3') {
         fontSize = 12;
         fontStyle = 'bold';
-        lineSpacing = 6.5;
-        extraPadding = 2;
+        extraPadding = 3;
       } else if (block.type === 'quote') {
         fontSize = 10.5;
         fontStyle = 'italic';
         fontColor = [85, 75, 65];
-        lineSpacing = 5.5;
+        extraPadding = 3.5;
       }
 
       pdf.setFont('times', fontStyle);
       pdf.setFontSize(fontSize);
       pdf.setTextColor(fontColor[0], fontColor[1], fontColor[2]);
 
+      const lineSpacing = fontSize * 0.3528 * 1.35; // Standard 1.35x line height in mm (~5.24mm for 11pt)
       const lines = pdf.splitTextToSize(block.text, contentWidth);
-      const blockHeight = lines.length * lineSpacing;
 
-      // Check if block exceeds page height
-      if (y + blockHeight > bottomThreshold) {
-        pdf.addPage();
-        currentPage++;
-        y = margin + 5;
-      }
+      // Print each line with safe page boundary overflow handling
+      lines.forEach((line: string) => {
+        if (y + lineSpacing > bottomThreshold) {
+          pdf.addPage();
+          currentPage++;
+          y = margin + 5;
+        }
+        pdf.text(line, margin, y);
+        y += lineSpacing;
+      });
 
-      pdf.text(lines, margin, y);
-      y += blockHeight + extraPadding;
+      // Extra space between paragraphs / dialogue blocks
+      y += extraPadding;
     });
 
     // If last section, render signature block
