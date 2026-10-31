@@ -7,11 +7,13 @@ export interface ExportFileOptions {
   mimeType: string;
   content: string | Blob;
   title?: string;
+  mode?: 'save' | 'share';
 }
 
 export interface ExportResult {
   success: boolean;
-  method: 'capacitor-share' | 'web-share' | 'download' | 'copy';
+  method: 'download' | 'capacitor-save' | 'capacitor-share' | 'web-share' | 'copy';
+  savedPath?: string;
   error?: string;
 }
 
@@ -46,86 +48,135 @@ async function toBase64(content: string | Blob): Promise<string> {
 }
 
 /**
- * Universally exports or shares files across:
- * 1. Android/iOS Capacitor APK (using Filesystem.writeFile with FileProvider and Share.share { files: [...] })
- * 2. Mobile web (using navigator.share with File if supported)
- * 3. Desktop web (using standard blob object URL / direct download)
+ * Universally exports files:
+ * 1. Mode 'save' (Default): Saves directly to the system (Desktop Downloads, Android Documents, Device Storage)
+ * 2. Mode 'share': Opens native/web share sheet (WhatsApp, Drive, Email, etc.)
  */
 export async function exportManuscriptFile(options: ExportFileOptions): Promise<ExportResult> {
-  const { filename, mimeType, content, title = 'Literia Manuscript' } = options;
+  const { filename, mimeType, content, title = 'Literia Manuscript', mode = 'save' } = options;
+  const blob = typeof content === 'string' ? new Blob([content], { type: `${mimeType};charset=utf-8` }) : content;
 
-  // 1. Native Capacitor Android / iOS App
+  // ==========================================
+  // MODE 1: EXPLICIT SHARE REQUEST
+  // ==========================================
+  if (mode === 'share') {
+    // 1a. Native Android / iOS Share Sheet
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const base64Data = await toBase64(content);
+        const writeResult = await Filesystem.writeFile({
+          path: filename,
+          data: base64Data,
+          directory: Directory.Cache,
+          recursive: true,
+        });
+
+        await Share.share({
+          title,
+          files: [writeResult.uri],
+          dialogTitle: `Share ${filename}`,
+        });
+
+        return { success: true, method: 'capacitor-share', savedPath: writeResult.uri };
+      } catch (err: any) {
+        if (
+          err?.message?.includes('canceled') ||
+          err?.message?.includes('cancelled') ||
+          err?.message?.includes('Share canceled')
+        ) {
+          return { success: true, method: 'capacitor-share' };
+        }
+        console.warn('Native share failed, falling back to direct download:', err);
+      }
+    }
+
+    // 1b. Mobile / Desktop Web Share API
+    if (typeof navigator !== 'undefined' && typeof File !== 'undefined' && navigator.canShare) {
+      try {
+        const file = new File([blob], filename, { type: mimeType });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title,
+            files: [file],
+          });
+          return { success: true, method: 'web-share' };
+        }
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          return { success: true, method: 'web-share' };
+        }
+        console.warn('Web share failed, falling back to direct download:', err);
+      }
+    }
+  }
+
+  // ==========================================
+  // MODE 2: SAVE DIRECTLY TO SYSTEM (DEFAULT)
+  // ==========================================
+
+  // 2a. Native Android / iOS Device Storage via Capacitor Filesystem
   if (Capacitor.isNativePlatform()) {
     try {
       const base64Data = await toBase64(content);
+      let savedUri = '';
 
-      // Save a copy in Documents folder for easy offline file browsing if permitted
+      // Primary target: Public Documents directory (accessible in device Files / Downloads app)
       try {
-        await Filesystem.writeFile({
+        const writeDoc = await Filesystem.writeFile({
           path: filename,
           data: base64Data,
           directory: Directory.Documents,
           recursive: true,
         });
-      } catch {
-        // Documents folder write may require extra permissions on some Android versions, continue to Cache
+        savedUri = writeDoc.uri;
+      } catch (docErr) {
+        // Fallback: External Storage
+        try {
+          const writeExt = await Filesystem.writeFile({
+            path: filename,
+            data: base64Data,
+            directory: Directory.ExternalStorage,
+            recursive: true,
+          });
+          savedUri = writeExt.uri;
+        } catch {
+          // Fallback: App Cache
+          const writeCache = await Filesystem.writeFile({
+            path: filename,
+            data: base64Data,
+            directory: Directory.Cache,
+            recursive: true,
+          });
+          savedUri = writeCache.uri;
+        }
       }
 
-      // Write to Cache directory (guaranteed by FileProvider paths)
-      const writeResult = await Filesystem.writeFile({
-        path: filename,
-        data: base64Data,
-        directory: Directory.Cache,
-        recursive: true,
-      });
+      // Also trigger browser anchor download in WebView as extra download hook
+      try {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          if (document.body.contains(a)) document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 1500);
+      } catch {}
 
-      // CRITICAL FOR ANDROID:
-      // Pass ONLY `files: [writeResult.uri]` so Capacitor SharePlugin triggers `shareFiles()`
-      // with FileProvider content URI, EXTRA_STREAM, and FLAG_GRANT_READ_URI_PERMISSION.
-      // Do NOT pass `text` or `url` which causes Android to treat it as plain text!
-      await Share.share({
-        title,
-        files: [writeResult.uri],
-        dialogTitle: `Save or Share ${filename}`,
-      });
-
-      return { success: true, method: 'capacitor-share' };
-    } catch (err: any) {
-      console.warn('Native Capacitor share failed, falling back:', err);
-      // If user dismissed or cancelled the share dialog, consider it handled
-      if (
-        err?.message?.includes('canceled') ||
-        err?.message?.includes('cancelled') ||
-        err?.message?.includes('Share canceled')
-      ) {
-        return { success: true, method: 'capacitor-share' };
-      }
+      return {
+        success: true,
+        method: 'capacitor-save',
+        savedPath: savedUri || filename,
+      };
+    } catch (nativeErr: any) {
+      console.warn('Native Filesystem save failed, falling back to browser download:', nativeErr);
     }
   }
 
-  // 2. Mobile Web Share API with file attachment support
-  const blob = typeof content === 'string' ? new Blob([content], { type: `${mimeType};charset=utf-8` }) : content;
-
-  if (typeof navigator !== 'undefined' && typeof File !== 'undefined' && navigator.canShare) {
-    try {
-      const file = new File([blob], filename, { type: mimeType });
-      if (navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          title,
-          files: [file],
-        });
-        return { success: true, method: 'web-share' };
-      }
-    } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        // User cancelled share
-        return { success: true, method: 'web-share' };
-      }
-      console.warn('Web share failed, trying browser download:', err);
-    }
-  }
-
-  // 3. Desktop Web Browser Download via Object URL
+  // 2b. Standard Browser Direct System Download via Blob Object URL
   try {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -143,11 +194,11 @@ export async function exportManuscriptFile(options: ExportFileOptions): Promise<
 
     return { success: true, method: 'download' };
   } catch (downloadErr: any) {
-    console.error('Download failed:', downloadErr);
+    console.error('Direct system download failed:', downloadErr);
     return {
       success: false,
       method: 'download',
-      error: downloadErr?.message || 'Failed to download file',
+      error: downloadErr?.message || 'Failed to download file to system',
     };
   }
 }

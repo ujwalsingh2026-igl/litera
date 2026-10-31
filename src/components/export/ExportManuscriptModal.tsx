@@ -20,6 +20,7 @@ import {
   Globe,
   Sparkles,
   BookOpen,
+  Share2,
 } from 'lucide-react';
 
 interface ExportManuscriptModalProps {
@@ -128,26 +129,37 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
     setTimeout(() => setExportNotice(null), 3500);
   };
 
-  const handleDownloadTxt = async () => {
-    setIsExporting('txt');
+  const getNoticeMessage = (res: { method?: string; success: boolean }, formatName: string, filename: string) => {
+    if (res.method === 'capacitor-save') return `Saved to Documents: ${filename}`;
+    if (res.method === 'download') return `Saved to system: ${filename}`;
+    if (res.method === 'capacitor-share' || res.method === 'web-share') return `${formatName} shared successfully!`;
+    return `${formatName} exported!`;
+  };
+
+  const handleDownloadTxt = async (mode: 'save' | 'share' = 'save') => {
+    const key = mode === 'share' ? 'txt-share' : 'txt';
+    setIsExporting(key);
     try {
       const text = getPlainText();
+      const filename = `${effectiveTitle.replace(/\s+/g, '_')}.txt`;
       const res = await exportManuscriptFile({
-        filename: `${effectiveTitle.replace(/\s+/g, '_')}.txt`,
+        filename,
         mimeType: 'text/plain',
         content: text,
         title: effectiveTitle,
+        mode,
       });
       if (res.success) {
-        showNotice(res.method === 'capacitor-share' || res.method === 'web-share' ? 'Shared successfully!' : 'Downloaded .txt file!');
+        showNotice(getNoticeMessage(res, 'Plain Text (.txt)', filename));
       }
     } finally {
       setIsExporting(null);
     }
   };
 
-  const handleDownloadMd = async () => {
-    setIsExporting('md');
+  const handleDownloadMd = async (mode: 'save' | 'share' = 'save') => {
+    const key = mode === 'share' ? 'md-share' : 'md';
+    setIsExporting(key);
     try {
       let md = `# ${effectiveTitle}\n\n`;
       if (bookSubtitle) md += `*${bookSubtitle}*\n\n`;
@@ -168,22 +180,25 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
       if (exportPlacement === 'bottom' || exportPlacement === 'both') {
         md += `\n\n---\n\n*Signed by ${typedName}*\n`;
       }
+      const filename = `${effectiveTitle.replace(/\s+/g, '_')}.md`;
       const res = await exportManuscriptFile({
-        filename: `${effectiveTitle.replace(/\s+/g, '_')}.md`,
+        filename,
         mimeType: 'text/markdown',
         content: md,
         title: effectiveTitle,
+        mode,
       });
       if (res.success) {
-        showNotice(res.method === 'capacitor-share' || res.method === 'web-share' ? 'Shared successfully!' : 'Downloaded .md file!');
+        showNotice(getNoticeMessage(res, 'Markdown (.md)', filename));
       }
     } finally {
       setIsExporting(null);
     }
   };
 
-  const handleDownloadDocx = async () => {
-    setIsExporting('doc');
+  const handleDownloadDocx = async (mode: 'save' | 'share' = 'save') => {
+    const key = mode === 'share' ? 'doc-share' : 'doc';
+    setIsExporting(key);
     try {
       const docxBlob = await generateManuscriptDocxBlob({
         title: effectiveTitle,
@@ -198,19 +213,17 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
         },
       });
 
+      const filename = `${effectiveTitle.replace(/\s+/g, '_')}.docx`;
       const res = await exportManuscriptFile({
-        filename: `${effectiveTitle.replace(/\s+/g, '_')}.docx`,
+        filename,
         mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         content: docxBlob,
         title: `${effectiveTitle} (Word Document)`,
+        mode,
       });
 
       if (res.success) {
-        showNotice(
-          res.method === 'capacitor-share' || res.method === 'web-share'
-            ? 'Word document (.docx) shared!'
-            : 'Downloaded .docx file!'
-        );
+        showNotice(getNoticeMessage(res, 'Word document (.docx)', filename));
       }
     } catch (err) {
       console.error('Failed to generate Word document:', err);
@@ -220,8 +233,9 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
     }
   };
 
-  const handleDownloadHtml = async () => {
-    setIsExporting('html');
+  const handleDownloadHtml = async (mode: 'save' | 'share' = 'save') => {
+    const key = mode === 'share' ? 'html-share' : 'html';
+    setIsExporting(key);
     try {
       const fullHtml = generateManuscriptPrintHtml({
         title: effectiveTitle,
@@ -241,22 +255,25 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
         },
       });
 
+      const filename = `${effectiveTitle.replace(/\s+/g, '_')}.html`;
       const res = await exportManuscriptFile({
-        filename: `${effectiveTitle.replace(/\s+/g, '_')}.html`,
+        filename,
         mimeType: 'text/html',
         content: fullHtml,
         title: effectiveTitle,
+        mode,
       });
       if (res.success) {
-        showNotice(res.method === 'capacitor-share' || res.method === 'web-share' ? 'Shared successfully!' : 'Downloaded .html file!');
+        showNotice(getNoticeMessage(res, 'HTML Document', filename));
       }
     } finally {
       setIsExporting(null);
     }
   };
 
-  const handlePrintPdf = async () => {
-    setIsExporting('pdf');
+  const handlePrintPdf = async (mode: 'save' | 'share' = 'save') => {
+    const key = mode === 'share' ? 'pdf-share' : 'pdf';
+    setIsExporting(key);
     try {
       // Save signature placement settings back to state
       updateSettings({
@@ -287,19 +304,17 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
         },
       });
 
+      const filename = `${effectiveTitle.replace(/\s+/g, '_')}.pdf`;
       const res = await exportManuscriptFile({
-        filename: `${effectiveTitle.replace(/\s+/g, '_')}.pdf`,
+        filename,
         mimeType: 'application/pdf',
         content: pdfBlob,
         title: `${effectiveTitle} (PDF Manuscript)`,
+        mode,
       });
 
       if (res.success) {
-        showNotice(
-          res.method === 'capacitor-share' || res.method === 'web-share'
-            ? 'PDF document shared successfully!'
-            : 'PDF downloaded successfully!'
-        );
+        showNotice(getNoticeMessage(res, 'PDF Manuscript', filename));
       }
     } catch (err) {
       console.error('Failed to export PDF:', err);
@@ -430,141 +445,228 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
             Select Export Format
           </label>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {/* 1. REAL PDF DOCUMENT */}
-            <button
-              type="button"
-              onClick={handlePrintPdf}
-              disabled={isExporting !== null}
-              className="p-3.5 rounded-xl border border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/30 hover:bg-amber-100/60 dark:hover:bg-amber-900/40 text-left transition flex flex-col justify-between group disabled:opacity-50"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <Printer className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                <span className="text-[10px] uppercase tracking-wider font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded">
-                  {isExporting === 'pdf' ? 'Generating...' : 'Standard PDF'}
-                </span>
-              </div>
+            <div className="p-3.5 rounded-xl border border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/30 flex flex-col justify-between space-y-3">
               <div>
-                <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
-                  {isExporting === 'pdf' ? 'Generating PDF Document...' : 'PDF Document (.pdf)'}
+                <div className="flex items-center justify-between mb-2">
+                  <Printer className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                  <span className="text-[10px] uppercase tracking-wider font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded">
+                    {isExporting?.startsWith('pdf') ? 'Exporting...' : 'Standard PDF'}
+                  </span>
                 </div>
-                <div className="text-[11px] text-stone-500 dark:text-stone-400">
+                <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
+                  PDF Document (.pdf)
+                </div>
+                <div className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
                   Standard multi-page PDF with cover & page numbers
                 </div>
               </div>
-            </button>
+              <div className="flex items-center gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handlePrintPdf('save')}
+                  disabled={isExporting !== null}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition disabled:opacity-50"
+                  title="Save directly to your device storage"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{isExporting === 'pdf' ? 'Saving...' : 'Save to System'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePrintPdf('share')}
+                  disabled={isExporting !== null}
+                  className="p-1.5 rounded-lg border border-amber-500/40 hover:bg-amber-200/50 dark:hover:bg-amber-900/40 text-amber-800 dark:text-amber-300 transition disabled:opacity-50"
+                  title="Share to external app"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
 
             {/* 2. REAL MICROSOFT WORD (.DOCX) */}
-            <button
-              type="button"
-              onClick={handleDownloadDocx}
-              disabled={isExporting !== null}
-              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-blue-500/40 bg-white dark:bg-stone-900 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 text-left transition flex flex-col justify-between disabled:opacity-50"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <FileText className="w-5 h-5 text-blue-500" />
-                <span className="text-[10px] text-stone-400 font-mono">
-                  {isExporting === 'doc' ? 'Generating...' : '.docx'}
-                </span>
-              </div>
+            <div className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 flex flex-col justify-between space-y-3">
               <div>
-                <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
-                  {isExporting === 'doc' ? 'Generating Word (.docx)...' : 'Microsoft Word (.docx)'}
+                <div className="flex items-center justify-between mb-2">
+                  <FileText className="w-5 h-5 text-blue-500" />
+                  <span className="text-[10px] text-stone-400 font-mono">
+                    {isExporting?.startsWith('doc') ? 'Exporting...' : '.docx'}
+                  </span>
                 </div>
-                <div className="text-[11px] text-stone-500 dark:text-stone-400">
+                <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
+                  Microsoft Word (.docx)
+                </div>
+                <div className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
                   Genuine Word document file with formatted chapters
                 </div>
               </div>
-            </button>
+              <div className="flex items-center gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadDocx('save')}
+                  disabled={isExporting !== null}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-blue-600 dark:hover:bg-blue-500 dark:hover:text-white text-xs font-medium transition disabled:opacity-50"
+                  title="Save directly to your device storage"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{isExporting === 'doc' ? 'Saving...' : 'Save to System'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadDocx('share')}
+                  disabled={isExporting !== null}
+                  className="p-1.5 rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 transition disabled:opacity-50"
+                  title="Share to external app"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
 
             {/* 3. MARKDOWN */}
-            <button
-              type="button"
-              onClick={handleDownloadMd}
-              disabled={isExporting !== null}
-              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-emerald-500/40 bg-white dark:bg-stone-900 hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 text-left transition flex flex-col justify-between disabled:opacity-50"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <FileCode className="w-5 h-5 text-emerald-500" />
-                <span className="text-[10px] text-stone-400 font-mono">
-                  {isExporting === 'md' ? 'Exporting...' : '.md'}
-                </span>
-              </div>
+            <div className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 flex flex-col justify-between space-y-3">
               <div>
-                <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
-                  {isExporting === 'md' ? 'Exporting Markdown...' : 'Markdown (.md)'}
+                <div className="flex items-center justify-between mb-2">
+                  <FileCode className="w-5 h-5 text-emerald-500" />
+                  <span className="text-[10px] text-stone-400 font-mono">
+                    {isExporting?.startsWith('md') ? 'Exporting...' : '.md'}
+                  </span>
                 </div>
-                <div className="text-[11px] text-stone-500 dark:text-stone-400">
+                <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
+                  Markdown (.md)
+                </div>
+                <div className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
                   Plain markdown syntax with headers & dividers
                 </div>
               </div>
-            </button>
+              <div className="flex items-center gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadMd('save')}
+                  disabled={isExporting !== null}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-emerald-600 dark:hover:bg-emerald-500 dark:hover:text-white text-xs font-medium transition disabled:opacity-50"
+                  title="Save directly to your device storage"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{isExporting === 'md' ? 'Saving...' : 'Save to System'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadMd('share')}
+                  disabled={isExporting !== null}
+                  className="p-1.5 rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 transition disabled:opacity-50"
+                  title="Share to external app"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
 
             {/* 4. PLAIN TEXT */}
-            <button
-              type="button"
-              onClick={handleDownloadTxt}
-              disabled={isExporting !== null}
-              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-purple-500/40 bg-white dark:bg-stone-900 hover:bg-purple-50/40 dark:hover:bg-purple-950/20 text-left transition flex flex-col justify-between disabled:opacity-50"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <Download className="w-5 h-5 text-purple-500" />
-                <span className="text-[10px] text-stone-400 font-mono">
-                  {isExporting === 'txt' ? 'Exporting...' : '.txt'}
-                </span>
-              </div>
+            <div className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 flex flex-col justify-between space-y-3">
               <div>
-                <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
-                  {isExporting === 'txt' ? 'Exporting Plain Text...' : 'Plain Text (.txt)'}
+                <div className="flex items-center justify-between mb-2">
+                  <Download className="w-5 h-5 text-purple-500" />
+                  <span className="text-[10px] text-stone-400 font-mono">
+                    {isExporting?.startsWith('txt') ? 'Exporting...' : '.txt'}
+                  </span>
                 </div>
-                <div className="text-[11px] text-stone-500 dark:text-stone-400">
+                <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
+                  Plain Text (.txt)
+                </div>
+                <div className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
                   Complete unformatted manuscript text
                 </div>
               </div>
-            </button>
+              <div className="flex items-center gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadTxt('save')}
+                  disabled={isExporting !== null}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-purple-600 dark:hover:bg-purple-500 dark:hover:text-white text-xs font-medium transition disabled:opacity-50"
+                  title="Save directly to your device storage"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{isExporting === 'txt' ? 'Saving...' : 'Save to System'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadTxt('share')}
+                  disabled={isExporting !== null}
+                  className="p-1.5 rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 transition disabled:opacity-50"
+                  title="Share to external app"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
 
             {/* 5. STANDALONE HTML */}
-            <button
-              type="button"
-              onClick={handleDownloadHtml}
-              disabled={isExporting !== null}
-              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-sky-500/40 bg-white dark:bg-stone-900 hover:bg-sky-50/40 dark:hover:bg-sky-950/20 text-left transition flex flex-col justify-between disabled:opacity-50"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <Globe className="w-5 h-5 text-sky-500" />
-                <span className="text-[10px] text-stone-400 font-mono">
-                  {isExporting === 'html' ? 'Exporting...' : '.html'}
-                </span>
-              </div>
+            <div className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 flex flex-col justify-between space-y-3">
               <div>
-                <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
-                  {isExporting === 'html' ? 'Exporting HTML Document...' : 'HTML Web Document'}
+                <div className="flex items-center justify-between mb-2">
+                  <Globe className="w-5 h-5 text-sky-500" />
+                  <span className="text-[10px] text-stone-400 font-mono">
+                    {isExporting?.startsWith('html') ? 'Exporting...' : '.html'}
+                  </span>
                 </div>
-                <div className="text-[11px] text-stone-500 dark:text-stone-400">
+                <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
+                  HTML Web Document
+                </div>
+                <div className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
                   Self-contained web page with cover & watermark
                 </div>
               </div>
-            </button>
+              <div className="flex items-center gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadHtml('save')}
+                  disabled={isExporting !== null}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 hover:bg-sky-600 dark:hover:bg-sky-500 dark:hover:text-white text-xs font-medium transition disabled:opacity-50"
+                  title="Save directly to your device storage"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{isExporting === 'html' ? 'Saving...' : 'Save to System'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadHtml('share')}
+                  disabled={isExporting !== null}
+                  className="p-1.5 rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-300 transition disabled:opacity-50"
+                  title="Share to external app"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
 
             {/* 6. COPY TO CLIPBOARD */}
-            <button
-              type="button"
-              onClick={handleCopyText}
-              className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 hover:border-stone-400 bg-white dark:bg-stone-900 hover:bg-stone-50 dark:hover:bg-stone-800 text-left transition flex flex-col justify-between"
-            >
-              <div className="flex items-center justify-between mb-2">
-                {copied ? <Check className="w-5 h-5 text-emerald-600" /> : <Copy className="w-5 h-5 text-stone-500" />}
-                <span className="text-[10px] text-stone-400 font-mono">Clipboard</span>
-              </div>
+            <div className="p-3.5 rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 flex flex-col justify-between space-y-3">
               <div>
+                <div className="flex items-center justify-between mb-2">
+                  {copied ? <Check className="w-5 h-5 text-emerald-600" /> : <Copy className="w-5 h-5 text-stone-500" />}
+                  <span className="text-[10px] text-stone-400 font-mono">Clipboard</span>
+                </div>
                 <div className="font-bold text-xs text-stone-900 dark:text-stone-100">
                   {copied ? 'Copied to Clipboard!' : 'Copy Plain Text'}
                 </div>
-                <div className="text-[11px] text-stone-500 dark:text-stone-400">
-                  Copy formatted manuscript text
+                <div className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
+                  Copy formatted manuscript text to clipboard
                 </div>
               </div>
-            </button>
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={handleCopyText}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300 text-xs font-medium transition"
+                  title="Copy text to clipboard"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{copied ? 'Copied!' : 'Copy to Clipboard'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
