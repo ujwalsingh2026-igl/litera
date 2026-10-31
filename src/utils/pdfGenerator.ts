@@ -8,6 +8,8 @@ export interface GeneratePdfOptions {
   genre?: string;
   date?: string;
   sections: PrintManuscriptSection[];
+  fontFamily?: string;
+  includeCoverPage?: boolean;
   watermark?: {
     enabled: boolean;
     text: string;
@@ -22,7 +24,8 @@ export interface GeneratePdfOptions {
 
 export interface ManuscriptBlock {
   text: string;
-  type: 'p' | 'h1' | 'h2' | 'h3' | 'quote' | 'li';
+  type: 'p' | 'h1' | 'h2' | 'h3' | 'quote' | 'li' | 'hr';
+  align?: 'left' | 'center' | 'right';
 }
 
 /**
@@ -108,19 +111,26 @@ export function parseHtmlToBlocks(html: string): ManuscriptBlock[] {
     return normalizedHtml
       .replace(/<[^>]+>/g, '\n')
       .split('\n')
-      .map((text) => ({ text, type: 'p' }));
+      .map((text) => ({ text, type: 'p', align: 'left' }));
   }
 
   const parser = new DOMParser();
   const doc = parser.parseFromString(`<body>${normalizedHtml}</body>`, 'text/html');
   const blocks: ManuscriptBlock[] = [];
 
+  const getAlign = (el: HTMLElement): 'left' | 'center' | 'right' => {
+    const textAlign = el.style?.textAlign?.toLowerCase() || el.getAttribute('align')?.toLowerCase();
+    if (textAlign === 'center') return 'center';
+    if (textAlign === 'right') return 'right';
+    return 'left';
+  };
+
   const traverse = (node: Node) => {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent || '';
       const lines = text.split('\n');
       for (const line of lines) {
-        blocks.push({ text: line, type: 'p' });
+        blocks.push({ text: line, type: 'p', align: 'left' });
       }
       return;
     }
@@ -128,12 +138,13 @@ export function parseHtmlToBlocks(html: string): ManuscriptBlock[] {
     if (node.nodeType === Node.ELEMENT_NODE) {
       const el = node as HTMLElement;
       const tag = el.tagName.toLowerCase();
+      const align = getAlign(el);
 
       // Heading elements
       if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
         const text = el.textContent || '';
         const type = tag === 'h1' ? 'h1' : tag === 'h2' ? 'h2' : 'h3';
-        blocks.push({ text, type });
+        blocks.push({ text, type, align });
         return;
       }
 
@@ -142,7 +153,7 @@ export function parseHtmlToBlocks(html: string): ManuscriptBlock[] {
         const text = el.textContent || '';
         const lines = text.split('\n');
         for (const line of lines) {
-          blocks.push({ text: line, type: 'quote' });
+          blocks.push({ text: line, type: 'quote', align });
         }
         return;
       }
@@ -150,13 +161,13 @@ export function parseHtmlToBlocks(html: string): ManuscriptBlock[] {
       // List items
       if (tag === 'li') {
         const text = el.textContent || '';
-        blocks.push({ text: `• ${text}`, type: 'li' });
+        blocks.push({ text: `•  ${text}`, type: 'li', align });
         return;
       }
 
       // Horizontal dividers / asterisms
       if (tag === 'hr') {
-        blocks.push({ text: '* * *', type: 'p' });
+        blocks.push({ text: '*   *   *', type: 'hr', align: 'center' });
         return;
       }
 
@@ -182,7 +193,7 @@ export function parseHtmlToBlocks(html: string): ManuscriptBlock[] {
 
         const lines = pText.split('\n');
         for (const line of lines) {
-          blocks.push({ text: line, type: 'p' });
+          blocks.push({ text: line, type: 'p', align });
         }
         return;
       }
@@ -203,7 +214,7 @@ export function parseHtmlToBlocks(html: string): ManuscriptBlock[] {
       const text = el.textContent || '';
       const lines = text.split('\n');
       for (const line of lines) {
-        blocks.push({ text: line, type: 'p' });
+        blocks.push({ text: line, type: 'p', align });
       }
     }
   };
@@ -216,7 +227,9 @@ export function parseHtmlToBlocks(html: string): ManuscriptBlock[] {
 }
 
 /**
- * Generates a real, standard, multi-page PDF binary file for printing and reading.
+ * Generates a clean, authentic manuscript PDF matching Literia's editor writing sheet.
+ * Preserves exact whitespace, paragraph spacing, dialogue formatting, and Literia's
+ * distinctive title accent underline and styling without forced cover page push.
  */
 export async function generateManuscriptPdfBlob(options: GeneratePdfOptions): Promise<Blob> {
   const {
@@ -226,6 +239,8 @@ export async function generateManuscriptPdfBlob(options: GeneratePdfOptions): Pr
     genre,
     date = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
     sections,
+    fontFamily = 'serif',
+    includeCoverPage = false,
     watermark,
     signature,
   } = options;
@@ -239,159 +254,275 @@ export async function generateManuscriptPdfBlob(options: GeneratePdfOptions): Pr
 
   const pageWidth = 210;
   const pageHeight = 297;
-  const margin = 22; // 22mm margin
-  const contentWidth = pageWidth - margin * 2; // 166mm
-  const bottomThreshold = pageHeight - margin - 15;
+  const margin = 20; // 20mm margin (matches reading sheet margins)
+  const contentWidth = pageWidth - margin * 2; // 170mm
+  const bottomThreshold = pageHeight - margin - 12;
 
-  let currentPage = 1;
-
-  // 1. Render Elegant Cover Page
-  pdf.setFont('times', 'bold');
-  pdf.setFontSize(26);
-  pdf.setTextColor(30, 25, 20);
-
-  const titleLines = pdf.splitTextToSize(title, contentWidth);
-  let coverY = 85;
-  pdf.text(titleLines, pageWidth / 2, coverY, { align: 'center' });
-  coverY += titleLines.length * 10;
-
-  if (subtitle) {
-    pdf.setFont('times', 'italic');
-    pdf.setFontSize(14);
-    pdf.setTextColor(80, 75, 70);
-    const subLines = pdf.splitTextToSize(subtitle, contentWidth);
-    pdf.text(subLines, pageWidth / 2, coverY + 4, { align: 'center' });
-    coverY += subLines.length * 8;
+  // Resolve standard PDF font matching app appearance
+  let pdfFont = 'times';
+  if (fontFamily === 'mono') {
+    pdfFont = 'courier';
+  } else if (fontFamily === 'sans' || fontFamily === 'modern') {
+    pdfFont = 'helvetica';
+  } else {
+    pdfFont = 'times'; // serif, classic, handwriting
   }
 
-  // Cover Rule
-  pdf.setDrawColor(180, 160, 140);
-  pdf.setLineWidth(0.4);
-  pdf.line(pageWidth / 2 - 30, coverY + 8, pageWidth / 2 + 30, coverY + 8);
-  coverY += 20;
+  let y = margin + 4;
+  const shouldRenderCover = includeCoverPage && sections.length > 1;
 
-  // Author & Metadata
-  pdf.setFont('times', 'bold');
-  pdf.setFontSize(13);
-  pdf.setTextColor(40, 35, 30);
-  pdf.text(`By ${author}`, pageWidth / 2, coverY, { align: 'center' });
-  coverY += 8;
+  if (shouldRenderCover) {
+    // Render Book Title Cover Page only for multi-chapter compilation when requested
+    pdf.setFont(pdfFont, 'bold');
+    pdf.setFontSize(26);
+    pdf.setTextColor(28, 25, 23); // #1c1917
 
-  pdf.setFont('times', 'normal');
-  pdf.setFontSize(10);
-  pdf.setTextColor(110, 105, 100);
-  if (genre) {
-    pdf.text(`Genre: ${genre}`, pageWidth / 2, coverY, { align: 'center' });
-    coverY += 6;
-  }
-  pdf.text(date, pageWidth / 2, coverY, { align: 'center' });
+    const titleLines = pdf.splitTextToSize(title, contentWidth);
+    let coverY = 85;
+    pdf.text(titleLines, pageWidth / 2, coverY, { align: 'center' });
+    coverY += titleLines.length * 10;
 
-  // 2. Render Chapters & Content
-  sections.forEach((section, sIdx) => {
-    // Start each section/chapter on a fresh page
+    // Literia Accent Bar on Cover
+    pdf.setFillColor(217, 119, 6);
+    pdf.roundedRect(pageWidth / 2 - 16, coverY + 4, 32, 1.4, 0.7, 0.7, 'F');
+    coverY += 16;
+
+    if (subtitle) {
+      pdf.setFont(pdfFont, 'italic');
+      pdf.setFontSize(14);
+      pdf.setTextColor(87, 83, 78);
+      const subLines = pdf.splitTextToSize(subtitle, contentWidth);
+      pdf.text(subLines, pageWidth / 2, coverY, { align: 'center' });
+      coverY += subLines.length * 8 + 6;
+    }
+
+    if (author) {
+      pdf.setFont(pdfFont, 'bold');
+      pdf.setFontSize(13);
+      pdf.setTextColor(40, 35, 30);
+      pdf.text(`By ${author}`, pageWidth / 2, coverY, { align: 'center' });
+      coverY += 8;
+    }
+
+    pdf.setFont(pdfFont, 'normal');
+    pdf.setFontSize(10);
+    pdf.setTextColor(120, 113, 108);
+    if (genre) {
+      pdf.text(`Genre: ${genre}`, pageWidth / 2, coverY, { align: 'center' });
+      coverY += 6;
+    }
+    pdf.text(date, pageWidth / 2, coverY, { align: 'center' });
+
+    // Transition to Chapter 1
     pdf.addPage();
-    currentPage++;
+    y = margin + 5;
+  } else {
+    // START DIRECTLY ON PAGE 1: EXACT MATCH TO APP'S MANUSCRIPT SHEET
+    // 1. Prominent Document Title
+    pdf.setFont(pdfFont, 'bold');
+    pdf.setFontSize(22);
+    pdf.setTextColor(28, 25, 23); // #1c1917
+    const titleLines = pdf.splitTextToSize(title, contentWidth);
+    titleLines.forEach((tLine: string) => {
+      pdf.text(tLine, margin, y);
+      y += 8.5;
+    });
 
-    let y = margin + 5;
+    // 2. Literia Signature Amber Accent Pill Bar (matches editor UI: h-0.5 w-16 bg-amber-600)
+    pdf.setFillColor(217, 119, 6); // #d97706
+    pdf.roundedRect(margin, y, 22, 1.2, 0.6, 0.6, 'F');
+    y += 5.5;
 
-    // Chapter Header (if multi-chapter or custom title)
+    // 3. Author Byline & Date
+    if (author && author.trim()) {
+      pdf.setFont(pdfFont, 'italic');
+      pdf.setFontSize(9.5);
+      pdf.setTextColor(120, 113, 108); // #78716c
+      const byline = subtitle
+        ? `${subtitle} • By ${author} • ${date}`
+        : `By ${author} • ${date}`;
+      pdf.text(byline, margin, y);
+      y += 7;
+    }
+
+    // Natural vertical breathing space before prose begins
+    y += 4;
+  }
+
+  // Render Manuscript Sections / Chapters
+  sections.forEach((section, sIdx) => {
+    // In multi-chapter manuscripts, start subsequent chapters on a new page
+    if (sIdx > 0) {
+      pdf.addPage();
+      y = margin + 5;
+    }
+
+    // Chapter Header (if multi-chapter or distinct title)
     const showHeader = section.title && (sections.length > 1 || section.title !== title);
     if (showHeader) {
-      pdf.setFont('times', 'bold');
-      pdf.setFontSize(17);
-      pdf.setTextColor(35, 30, 25);
+      pdf.setFont(pdfFont, 'bold');
+      pdf.setFontSize(16);
+      pdf.setTextColor(28, 25, 23);
       const chLines = pdf.splitTextToSize(section.title!, contentWidth);
-      pdf.text(chLines, pageWidth / 2, y, { align: 'center' });
-      y += chLines.length * 8 + 8;
+      chLines.forEach((cLine: string) => {
+        pdf.text(cLine, margin, y);
+        y += 7;
+      });
+      // Chapter accent dot / mini-line
+      pdf.setFillColor(217, 119, 6);
+      pdf.roundedRect(margin, y, 14, 0.9, 0.45, 0.45, 'F');
+      y += 6;
     }
 
     const blocks = parseHtmlToBlocks(section.contentHtml || '');
 
     blocks.forEach((block) => {
-      let fontSize = 11;
-      let fontStyle: 'normal' | 'bold' | 'italic' = 'normal';
-      let fontColor = [35, 30, 25];
-      let extraPadding = 3.5;
-
-      if (block.type === 'h1') {
-        fontSize = 15;
-        fontStyle = 'bold';
-        extraPadding = 5;
-      } else if (block.type === 'h2') {
-        fontSize = 13;
-        fontStyle = 'bold';
-        extraPadding = 4;
-      } else if (block.type === 'h3') {
-        fontSize = 12;
-        fontStyle = 'bold';
-        extraPadding = 3;
-      } else if (block.type === 'quote') {
-        fontSize = 10.5;
-        fontStyle = 'italic';
-        fontColor = [85, 75, 65];
-        extraPadding = 3.5;
+      // Horizontal Rule / Asterism Divider
+      if (block.type === 'hr' || block.text === '*   *   *' || block.text === '* * *') {
+        if (y + 12 > bottomThreshold) {
+          pdf.addPage();
+          y = margin + 5;
+        }
+        y += 3;
+        pdf.setFont(pdfFont, 'normal');
+        pdf.setFontSize(11);
+        pdf.setTextColor(168, 162, 158); // #a8a29e
+        pdf.text('*   *   *', pageWidth / 2, y, { align: 'center' });
+        y += 7;
+        return;
       }
 
-      pdf.setFont('times', fontStyle);
+      let fontSize = 11.5; // App standard comfortable font size
+      let fontStyle: 'normal' | 'bold' | 'italic' = 'normal';
+      let fontColor = [28, 25, 23]; // #1c1917
+      let extraPadding = 4.5; // 4.5mm paragraph spacing matching editor.css
+      let indent = 0;
+      let effectiveWidth = contentWidth;
+
+      if (block.type === 'h1') {
+        fontSize = 18;
+        fontStyle = 'bold';
+        extraPadding = 5;
+        if (y + 22 > bottomThreshold) {
+          pdf.addPage();
+          y = margin + 5;
+        }
+      } else if (block.type === 'h2') {
+        fontSize = 15;
+        fontStyle = 'bold';
+        extraPadding = 4;
+        if (y + 18 > bottomThreshold) {
+          pdf.addPage();
+          y = margin + 5;
+        }
+      } else if (block.type === 'h3') {
+        fontSize = 13;
+        fontStyle = 'bold';
+        extraPadding = 3.5;
+        if (y + 15 > bottomThreshold) {
+          pdf.addPage();
+          y = margin + 5;
+        }
+      } else if (block.type === 'quote') {
+        fontSize = 11;
+        fontStyle = 'italic';
+        fontColor = [87, 83, 78]; // #57534e
+        extraPadding = 4;
+        indent = 6.5; // indent 6.5mm for the amber border
+        effectiveWidth = contentWidth - indent;
+      } else if (block.type === 'li') {
+        fontSize = 11.5;
+        fontStyle = 'normal';
+        extraPadding = 2.5;
+        indent = 4.5;
+        effectiveWidth = contentWidth - indent;
+      }
+
+      pdf.setFont(pdfFont, fontStyle);
       pdf.setFontSize(fontSize);
       pdf.setTextColor(fontColor[0], fontColor[1], fontColor[2]);
 
-      const lineSpacing = fontSize * 0.3528 * 1.35; // Standard 1.35x line height in mm (~5.24mm for 11pt)
-      const lines = pdf.splitTextToSize(block.text, contentWidth);
+      // 1.6x line height (comfortable, breathable literary line height matching editor)
+      const lineSpacing = fontSize * 0.3528 * 1.6;
 
-      // Print each line with safe page boundary overflow handling
+      // Handle empty string line (author intentional blank line)
+      if (block.text === '') {
+        y += lineSpacing;
+        return;
+      }
+
+      const lines = pdf.splitTextToSize(block.text, effectiveWidth);
+      const startQuoteY = y;
+
       lines.forEach((line: string) => {
         if (y + lineSpacing > bottomThreshold) {
           pdf.addPage();
-          currentPage++;
           y = margin + 5;
         }
-        pdf.text(line, margin, y);
+
+        const printX = margin + indent;
+        if (block.align === 'center') {
+          pdf.text(line, pageWidth / 2, y, { align: 'center' });
+        } else if (block.align === 'right') {
+          pdf.text(line, pageWidth - margin, y, { align: 'right' });
+        } else {
+          pdf.text(line, printX, y);
+        }
         y += lineSpacing;
       });
 
-      // Extra space between paragraphs / dialogue blocks
+      // If blockquote, draw the iconic Literia amber left border line
+      if (block.type === 'quote' && lines.length > 0) {
+        const endQuoteY = y - lineSpacing + 2;
+        pdf.setDrawColor(217, 119, 6); // #d97706
+        pdf.setLineWidth(0.75);
+        pdf.line(margin + 1.5, startQuoteY - 2.5, margin + 1.5, endQuoteY);
+      }
+
+      // Spacing after paragraph / block
       y += extraPadding;
     });
 
-    // If last section, render signature block
+    // Signature Block if enabled
     if (sIdx === sections.length - 1 && signature?.enabled && signature.typedName) {
       if (y + 35 > bottomThreshold) {
         pdf.addPage();
-        currentPage++;
         y = margin + 5;
       } else {
-        y += 10;
+        y += 8;
       }
 
-      pdf.setDrawColor(180, 170, 160);
-      pdf.setLineWidth(0.3);
-      pdf.line(margin, y, margin + 60, y);
+      // Amber top border line
+      pdf.setDrawColor(217, 119, 6);
+      pdf.setLineWidth(0.6);
+      pdf.line(margin, y, margin + 55, y);
       y += 6;
 
-      pdf.setFont('times', 'bold');
-      pdf.setFontSize(11);
-      pdf.setTextColor(40, 35, 30);
+      // Typed signature name in bold
+      pdf.setFont(pdfFont, 'bold');
+      pdf.setFontSize(12);
+      pdf.setTextColor(28, 25, 23);
       pdf.text(signature.typedName, margin, y);
       y += 5;
 
-      pdf.setFont('times', 'normal');
+      // Metadata
+      pdf.setFont(pdfFont, 'normal');
       pdf.setFontSize(9);
-      pdf.setTextColor(120, 115, 110);
+      pdf.setTextColor(120, 113, 108);
       pdf.text(`Signed Author • ${signature.date || date}`, margin, y);
     }
   });
 
-  // 3. Post-process all pages: Add Watermarks & Page Numbers
+  // Post-processing: Running Headers, Page Numbers, Watermarks
   const totalPages = pdf.getNumberOfPages();
 
   for (let p = 1; p <= totalPages; p++) {
     pdf.setPage(p);
 
-    // Apply diagonal watermark across background if enabled
+    // Diagonal Watermark if enabled
     if (watermark?.enabled && watermark.text?.trim()) {
       pdf.saveGraphicsState();
-      pdf.setTextColor(215, 210, 205);
+      pdf.setTextColor(225, 220, 215);
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(36);
       pdf.text(watermark.text.trim(), pageWidth / 2, pageHeight / 2, {
@@ -401,12 +532,24 @@ export async function generateManuscriptPdfBlob(options: GeneratePdfOptions): Pr
       pdf.restoreGraphicsState();
     }
 
-    // Add page number (Skip on Cover Page #1)
-    if (p > 1) {
-      pdf.setFont('times', 'normal');
+    // Running Header on Pages 2+ (Subtle title & hairline rule)
+    if (p > 1 && (!shouldRenderCover || p > 2)) {
+      pdf.setFont(pdfFont, 'italic');
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(168, 162, 158); // #a8a29e
+      pdf.text(title, margin, margin - 6);
+      pdf.setDrawColor(231, 229, 228); // #e7e5e4
+      pdf.setLineWidth(0.2);
+      pdf.line(margin, margin - 4, pageWidth - margin, margin - 4);
+    }
+
+    // Bottom Centered Page Number (on all pages or after cover)
+    if (!shouldRenderCover || p > 1) {
+      const pageNumStr = shouldRenderCover ? `${p - 1}` : `${p}`;
+      pdf.setFont(pdfFont, 'normal');
       pdf.setFontSize(9);
-      pdf.setTextColor(140, 135, 130);
-      pdf.text(`${p - 1}`, pageWidth / 2, pageHeight - 12, { align: 'center' });
+      pdf.setTextColor(168, 162, 158);
+      pdf.text(pageNumStr, pageWidth / 2, pageHeight - 10, { align: 'center' });
     }
   }
 

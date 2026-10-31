@@ -99,6 +99,8 @@ export const ManuscriptCompileModal: React.FC<ManuscriptCompileModalProps> = ({
         subtitle: bookSubtitle,
         author,
         genre,
+        fontFamily: settings.appearance.fontFamily,
+        includeCoverPage: true,
         sections: chapters.map((c) => ({
           title: c.title,
           contentHtml: c.content,
@@ -136,6 +138,8 @@ export const ManuscriptCompileModal: React.FC<ManuscriptCompileModalProps> = ({
         subtitle: bookSubtitle,
         author,
         genre,
+        fontFamily: settings.appearance.fontFamily,
+        includeCoverPage: true,
         sections: chapters.map((c) => ({
           title: c.title,
           contentHtml: c.content,

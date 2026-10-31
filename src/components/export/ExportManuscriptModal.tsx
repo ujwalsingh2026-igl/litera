@@ -274,13 +274,15 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
         },
       });
 
-      // Generate a REAL standard PDF binary Blob
+      // Generate a REAL standard PDF binary Blob matching editor writing style
       const pdfBlob = await generateManuscriptPdfBlob({
         title: effectiveTitle,
         subtitle: bookSubtitle,
         author,
         genre,
         sections: sectionsToExport,
+        fontFamily: settings.appearance.fontFamily,
+        includeCoverPage: hasMultipleChapters && exportScope === 'book',
         watermark: {
           enabled: exportPlacement === 'watermark' || exportPlacement === 'both',
           text: watermarkText,
@@ -448,7 +450,7 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
                   PDF Document (.pdf)
                 </div>
                 <div className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
-                  Standard multi-page PDF with cover & page numbers
+                  Authentic manuscript PDF matching editor writing style
                 </div>
               </div>
               <div className="flex items-center gap-1.5 pt-1">

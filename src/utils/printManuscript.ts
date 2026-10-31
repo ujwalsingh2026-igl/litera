@@ -10,6 +10,7 @@ export interface PrintManuscriptOptions {
   date?: string;
   genre?: string;
   sections: PrintManuscriptSection[];
+  includeCoverPage?: boolean;
   watermark?: {
     enabled: boolean;
     text: string;
@@ -23,9 +24,9 @@ export interface PrintManuscriptOptions {
 }
 
 /**
- * Generates clean, printer-friendly, multi-page HTML with strict CSS pagination rules.
- * This guarantees proper page breaks between the cover and chapters, and ensures that
- * long manuscripts cleanly flow across unlimited pages without getting cut off at 1 page.
+ * Generates clean, printer-friendly, multi-page HTML matching the app's manuscript sheet.
+ * Preserves exact whitespace, paragraph spacing, dialogue formatting, and Literia's
+ * distinctive title accent underline and styling.
  */
 export function generateManuscriptPrintHtml(options: PrintManuscriptOptions): string {
   const {
@@ -35,15 +36,16 @@ export function generateManuscriptPrintHtml(options: PrintManuscriptOptions): st
     date = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
     genre,
     sections,
+    includeCoverPage = false,
     watermark,
     signature,
   } = options;
 
   const watermarkOpacity = watermark?.opacity ?? 0.1;
   const showWatermark = watermark?.enabled && watermark.text?.trim().length > 0;
+  const shouldRenderCover = includeCoverPage && sections.length > 1;
 
-  // Format sections: if only 1 section with no title or title matches book title, render directly.
-  // Otherwise, render each section with a chapter title and page breaks.
+  // Format sections:
   const sectionsHtml = sections
     .map((section, idx) => {
       const showSectionHeader = section.title && (sections.length > 1 || section.title !== title);
@@ -54,7 +56,7 @@ export function generateManuscriptPrintHtml(options: PrintManuscriptOptions): st
           <div class="chapter-content">
             ${section.contentHtml || '<p class="empty-notice"><em>(No content in this chapter)</em></p>'}
           </div>
-          ${idx < sections.length - 1 ? '<div class="scene-divider" aria-hidden="true">❦ ❦ ❦</div>' : ''}
+          ${idx < sections.length - 1 ? '<div class="scene-divider" aria-hidden="true">*   *   *</div>' : ''}
         </article>
       `;
     })
@@ -73,6 +75,25 @@ export function generateManuscriptPrintHtml(options: PrintManuscriptOptions): st
     `
     : '';
 
+  const headerHtml = shouldRenderCover
+    ? `
+      <header class="cover-page">
+        <h1 class="cover-title">${escapeHtml(title)}</h1>
+        ${subtitle ? `<div class="cover-subtitle">${escapeHtml(subtitle)}</div>` : ''}
+        <hr class="cover-rule" />
+        <div class="cover-author">By ${escapeHtml(author)}</div>
+        ${genre ? `<div class="cover-meta">Genre: ${escapeHtml(genre)}</div>` : ''}
+        <div class="cover-meta">${escapeHtml(date)}</div>
+      </header>
+    `
+    : `
+      <header class="manuscript-header">
+        <h1 class="manuscript-title">${escapeHtml(title)}</h1>
+        <div class="manuscript-rule"></div>
+        ${author && author.trim() ? `<div class="manuscript-byline">${subtitle ? `${escapeHtml(subtitle)} • ` : ''}By ${escapeHtml(author)} • ${escapeHtml(date)}</div>` : ''}
+      </header>
+    `;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -82,20 +103,22 @@ export function generateManuscriptPrintHtml(options: PrintManuscriptOptions): st
     /* CSS Paged Media Standard for Multi-Page Printing */
     @page {
       size: A4 portrait;
-      margin: 25mm 20mm 25mm 20mm;
+      margin: 20mm 20mm 20mm 20mm;
       @bottom-center {
         content: counter(page);
         font-family: 'EB Garamond', Georgia, serif;
-        font-size: 10pt;
-        color: #78716c;
+        font-size: 9pt;
+        color: #a8a29e;
       }
     }
 
+    ${shouldRenderCover ? `
     @page :first {
       @bottom-center {
         content: none;
       }
     }
+    ` : ''}
 
     *, *::before, *::after {
       box-sizing: border-box;
@@ -111,7 +134,7 @@ export function generateManuscriptPrintHtml(options: PrintManuscriptOptions): st
       color: #1c1917 !important;
       font-family: 'EB Garamond', Georgia, 'Times New Roman', serif;
       font-size: 11.5pt;
-      line-height: 1.75;
+      line-height: 1.65;
       -webkit-font-smoothing: antialiased;
     }
 
@@ -133,7 +156,38 @@ export function generateManuscriptPrintHtml(options: PrintManuscriptOptions): st
       user-select: none;
     }
 
-    /* Cover Page */
+    /* Clean Manuscript Opening Header (Matches Literia Writing Sheet) */
+    .manuscript-header {
+      margin-bottom: 2rem;
+      page-break-after: avoid;
+      break-after: avoid;
+    }
+
+    .manuscript-title {
+      font-size: 24pt;
+      font-weight: 700;
+      line-height: 1.25;
+      margin: 0 0 0.5rem 0;
+      letter-spacing: -0.5px;
+      color: #1c1917;
+    }
+
+    .manuscript-rule {
+      width: 55px;
+      height: 3px;
+      background: #d97706;
+      border-radius: 9999px;
+      margin: 0.65rem 0 1rem 0;
+    }
+
+    .manuscript-byline {
+      font-size: 10pt;
+      font-style: italic;
+      color: #78716c;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Cover Page (When multi-chapter book compilation is enabled) */
     .cover-page {
       min-height: 85vh;
       display: flex;
@@ -204,15 +258,15 @@ export function generateManuscriptPrintHtml(options: PrintManuscriptOptions): st
     .chapter-break {
       page-break-before: always;
       break-before: page;
-      padding-top: 2.5rem;
+      padding-top: 2rem;
     }
 
     .chapter-title {
-      font-size: 20pt;
+      font-size: 18pt;
       font-weight: 700;
-      text-align: center;
+      text-align: left;
       margin-top: 1rem;
-      margin-bottom: 2.25rem;
+      margin-bottom: 1.5rem;
       letter-spacing: -0.2px;
       color: #1c1917;
       page-break-after: avoid;
@@ -221,54 +275,70 @@ export function generateManuscriptPrintHtml(options: PrintManuscriptOptions): st
 
     .chapter-content {
       font-size: 11.5pt;
-      line-height: 1.75;
+      line-height: 1.65;
       color: #1c1917;
     }
 
-    /* Standard Manuscript Paragraph Formatting */
+    /* Standard Manuscript Paragraph Formatting (Matches Literia editor.css) */
     p {
       margin-top: 0;
-      margin-bottom: 0.9rem;
-      text-indent: 1.5rem;
-      orphans: 3;
-      widows: 3;
-    }
-
-    /* Flush paragraphs following headings or breaks */
-    h1 + p, h2 + p, h3 + p, .chapter-title + p, .empty-notice, p:first-of-type {
+      margin-bottom: 0.65rem;
+      line-height: 1.65;
       text-indent: 0;
+      orphans: 2;
+      widows: 2;
     }
 
     h1, h2, h3, h4, h5, h6 {
       page-break-after: avoid;
       break-after: avoid;
       color: #1c1917;
+      font-family: inherit;
     }
 
+    h1 { font-size: 20pt; font-weight: 700; margin: 1.5rem 0 0.75rem 0; }
+    h2 { font-size: 16pt; font-weight: 600; margin: 1.25rem 0 0.5rem 0; }
+    h3 { font-size: 13.5pt; font-weight: 600; margin: 1rem 0 0.5rem 0; }
+
+    /* Blockquote with signature Literia amber border */
     blockquote {
-      margin: 1.5rem 2rem;
-      padding-left: 1.25rem;
-      border-left: 2px solid #a8a29e;
+      margin: 1rem 0;
+      padding-left: 1rem;
+      border-left: 3px solid #d97706;
       font-style: italic;
-      color: #44403c;
+      color: #57534e;
       page-break-inside: avoid;
       break-inside: avoid;
     }
 
+    blockquote p {
+      margin-bottom: 0.35rem;
+      line-height: 1.6;
+    }
+
     .scene-divider {
       text-align: center;
-      margin: 2.5rem 0;
+      margin: 2rem 0;
       color: #a8a29e;
-      font-size: 13pt;
+      font-size: 12pt;
       letter-spacing: 0.4em;
       page-break-inside: avoid;
       break-inside: avoid;
     }
 
+    ul, ol {
+      padding-left: 1.5rem;
+      margin: 0.75rem 0;
+    }
+
+    li {
+      margin-bottom: 0.25rem;
+    }
+
     /* Signature Block */
     .signature-footer {
-      margin-top: 4rem;
-      padding-top: 1.5rem;
+      margin-top: 3.5rem;
+      padding-top: 1.25rem;
       border-top: 1.5px solid #d97706;
       page-break-inside: avoid;
       break-inside: avoid;
@@ -276,7 +346,7 @@ export function generateManuscriptPrintHtml(options: PrintManuscriptOptions): st
 
     .sig-name {
       font-family: 'Caveat', 'Dancing Script', 'Brush Script MT', cursive, serif;
-      font-size: 24pt;
+      font-size: 22pt;
       color: #1c1917;
       line-height: 1.2;
     }
@@ -296,9 +366,10 @@ export function generateManuscriptPrintHtml(options: PrintManuscriptOptions): st
       body {
         max-width: 800px;
         margin: 2rem auto !important;
-        padding: 2rem !important;
-        background: #fdfbf7 !important;
+        padding: 2.5rem !important;
+        background: #ffffff !important;
         box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        border-radius: 8px;
       }
     }
   </style>
@@ -306,15 +377,7 @@ export function generateManuscriptPrintHtml(options: PrintManuscriptOptions): st
 <body>
   ${showWatermark ? `<div class="watermark-container">${escapeHtml(watermark!.text)}</div>` : ''}
 
-  <!-- Cover Page -->
-  <header class="cover-page">
-    <h1 class="cover-title">${escapeHtml(title)}</h1>
-    ${subtitle ? `<div class="cover-subtitle">${escapeHtml(subtitle)}</div>` : ''}
-    <hr class="cover-rule" />
-    <div class="cover-author">By ${escapeHtml(author)}</div>
-    ${genre ? `<div class="cover-meta">Genre: ${escapeHtml(genre)}</div>` : ''}
-    <div class="cover-meta">${escapeHtml(date)}</div>
-  </header>
+  ${headerHtml}
 
   <!-- Complete Multi-Page Manuscript Content -->
   <main class="manuscript-flow">
