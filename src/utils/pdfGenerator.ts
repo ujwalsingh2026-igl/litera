@@ -26,23 +26,88 @@ export interface ManuscriptBlock {
 }
 
 /**
+ * Converts HTML content to exact plain text without changing a single whitespace.
+ * Preserves every leading space, tab, consecutive spaces, blank lines, and line breaks.
+ */
+export function htmlToExactPlainText(html: string): string {
+  if (!html) return '';
+
+  if (typeof window === 'undefined') {
+    return html
+      .replace(/<br\s*[\/]?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<\/div>/gi, '\n')
+      .replace(/<\/h[1-6]>/gi, '\n')
+      .replace(/<\/li>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'");
+  }
+
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(`<body>${html}</body>`, 'text/html');
+  let result = '';
+
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      // PRESERVE EXACT TEXT CONTENT - ZERO TRIMMING, ZERO MODIFICATION
+      result += node.textContent || '';
+      return;
+    }
+
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const el = node as HTMLElement;
+      const tag = el.tagName.toLowerCase();
+
+      if (tag === 'br') {
+        result += '\n';
+        return;
+      }
+
+      const isBlock = [
+        'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'li', 'blockquote', 'tr', 'hr'
+      ].includes(tag);
+
+      for (let i = 0; i < el.childNodes.length; i++) {
+        walk(el.childNodes[i]);
+      }
+
+      if (isBlock) {
+        result += '\n';
+      }
+    }
+  };
+
+  for (let i = 0; i < doc.body.childNodes.length; i++) {
+    walk(doc.body.childNodes[i]);
+  }
+
+  if (result.endsWith('\n')) {
+    result = result.slice(0, -1);
+  }
+
+  return result;
+}
+
+/**
  * Parses HTML content into clean blocks of text with types (p, h1, h2, h3, quote, li).
- * Robustly traverses wrapper divs and extracts every paragraph and dialogue line distinctly.
+ * Preserves all whitespaces, indentation, spaces, and line breaks without trimming.
  */
 export function parseHtmlToBlocks(html: string): ManuscriptBlock[] {
-  if (!html || !html.trim()) return [];
+  if (!html) return [];
 
   // Replace <br> variants with newline character so internal line breaks are preserved
-  const normalizedHtml = html
-    .replace(/<br\s*[\/]?>/gi, '\n')
-    .replace(/&nbsp;/gi, ' ');
+  const normalizedHtml = html.replace(/<br\s*[\/]?>/gi, '\n');
 
   if (typeof window === 'undefined') {
     return normalizedHtml
       .replace(/<[^>]+>/g, '\n')
       .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean)
       .map((text) => ({ text, type: 'p' }));
   }
 
@@ -53,7 +118,7 @@ export function parseHtmlToBlocks(html: string): ManuscriptBlock[] {
   const traverse = (node: Node) => {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent || '';
-      const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+      const lines = text.split('\n');
       for (const line of lines) {
         blocks.push({ text: line, type: 'p' });
       }
@@ -66,18 +131,16 @@ export function parseHtmlToBlocks(html: string): ManuscriptBlock[] {
 
       // Heading elements
       if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
-        const text = el.textContent?.trim();
-        if (text) {
-          const type = tag === 'h1' ? 'h1' : tag === 'h2' ? 'h2' : 'h3';
-          blocks.push({ text, type });
-        }
+        const text = el.textContent || '';
+        const type = tag === 'h1' ? 'h1' : tag === 'h2' ? 'h2' : 'h3';
+        blocks.push({ text, type });
         return;
       }
 
       // Blockquotes
       if (tag === 'blockquote') {
         const text = el.textContent || '';
-        const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+        const lines = text.split('\n');
         for (const line of lines) {
           blocks.push({ text: line, type: 'quote' });
         }
@@ -86,10 +149,8 @@ export function parseHtmlToBlocks(html: string): ManuscriptBlock[] {
 
       // List items
       if (tag === 'li') {
-        const text = el.textContent?.trim();
-        if (text) {
-          blocks.push({ text: `• ${text}`, type: 'li' });
-        }
+        const text = el.textContent || '';
+        blocks.push({ text: `• ${text}`, type: 'li' });
         return;
       }
 
@@ -101,8 +162,25 @@ export function parseHtmlToBlocks(html: string): ManuscriptBlock[] {
 
       // Paragraph elements
       if (tag === 'p') {
-        const text = el.textContent || '';
-        const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+        let pText = '';
+        const walkP = (pChild: Node) => {
+          if (pChild.nodeType === Node.TEXT_NODE) {
+            pText += pChild.textContent || '';
+          } else if (pChild.nodeType === Node.ELEMENT_NODE) {
+            if ((pChild as HTMLElement).tagName.toLowerCase() === 'br') {
+              pText += '\n';
+            } else {
+              for (let j = 0; j < pChild.childNodes.length; j++) {
+                walkP(pChild.childNodes[j]);
+              }
+            }
+          }
+        };
+        for (let j = 0; j < el.childNodes.length; j++) {
+          walkP(el.childNodes[j]);
+        }
+
+        const lines = pText.split('\n');
         for (const line of lines) {
           blocks.push({ text: line, type: 'p' });
         }
@@ -123,7 +201,7 @@ export function parseHtmlToBlocks(html: string): ManuscriptBlock[] {
 
       // Leaf container element without nested block children
       const text = el.textContent || '';
-      const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+      const lines = text.split('\n');
       for (const line of lines) {
         blocks.push({ text: line, type: 'p' });
       }
@@ -132,18 +210,6 @@ export function parseHtmlToBlocks(html: string): ManuscriptBlock[] {
 
   for (let i = 0; i < doc.body.childNodes.length; i++) {
     traverse(doc.body.childNodes[i]);
-  }
-
-  // Fallback if no block elements were detected (e.g. pure raw unformatted text)
-  if (blocks.length === 0) {
-    const rawLines = normalizedHtml
-      .replace(/<[^>]+>/g, '\n')
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
-    for (const line of rawLines) {
-      blocks.push({ text: line, type: 'p' });
-    }
   }
 
   return blocks;

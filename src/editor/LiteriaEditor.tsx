@@ -886,6 +886,7 @@ export const LiteriaEditor: React.FC = () => {
         genre={parentBook?.genre}
         chapters={bookChapters.length > 0 ? bookChapters : undefined}
         liveContent={editor ? editor.getHTML() : undefined}
+        livePlainText={editor ? editor.getText({ blockSeparator: '\n' }) : undefined}
       />
 
       <AuthorSignatureModal

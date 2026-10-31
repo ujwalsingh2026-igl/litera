@@ -3,7 +3,10 @@ import { Modal } from '../ui';
 import type { Chapter, BookRollupStats } from '../../types';
 import { Copy, Download, Check, FileText, Share2 } from 'lucide-react';
 import { exportManuscriptFile } from '../../utils/exportHelper';
-import { generateManuscriptPdfBlob, parseHtmlToBlocks } from '../../utils/pdfGenerator';
+import {
+  generateManuscriptPdfBlob,
+  htmlToExactPlainText,
+} from '../../utils/pdfGenerator';
 import { generateManuscriptDocxBlob } from '../../utils/docxGenerator';
 import { useApp } from '../../state';
 
@@ -46,18 +49,16 @@ export const ManuscriptCompileModal: React.FC<ManuscriptCompileModalProps> = ({
   };
 
   const getPlainText = () => {
-    let output = `${bookTitle.toUpperCase()}\n`;
-    if (bookSubtitle) output += `${bookSubtitle}\n`;
-    output += `By ${author}\n`;
-    if (genre) output += `Genre: ${genre}\n`;
-    output += `Total Words: ${stats.totalWords.toLocaleString()}\n\n`;
-    output += `========================================\n\n`;
+    let output = '';
 
-    chapters.forEach((c) => {
-      output += `${c.title.toUpperCase()}\n\n`;
-      const blocks = parseHtmlToBlocks(c.content || '');
-      output += blocks.map((b) => b.text).join('\n\n');
-      output += `\n\n* * *\n\n`;
+    chapters.forEach((c, idx) => {
+      if (chapters.length > 1 && c.title) {
+        output += `${c.title}\n\n`;
+      }
+      output += htmlToExactPlainText(c.content || '');
+      if (idx < chapters.length - 1) {
+        output += `\n\n* * *\n\n`;
+      }
     });
 
     return output;

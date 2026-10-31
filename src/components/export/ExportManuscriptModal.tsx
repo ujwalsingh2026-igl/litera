@@ -7,7 +7,10 @@ import {
   type PrintManuscriptSection,
 } from '../../utils/printManuscript';
 import { exportManuscriptFile } from '../../utils/exportHelper';
-import { generateManuscriptPdfBlob, parseHtmlToBlocks } from '../../utils/pdfGenerator';
+import {
+  generateManuscriptPdfBlob,
+  htmlToExactPlainText,
+} from '../../utils/pdfGenerator';
 import { generateManuscriptDocxBlob } from '../../utils/docxGenerator';
 import {
   Printer,
@@ -33,6 +36,7 @@ interface ExportManuscriptModalProps {
   genre?: string;
   chapters?: Chapter[];
   liveContent?: string;
+  livePlainText?: string;
 }
 
 export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
@@ -45,6 +49,7 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
   genre,
   chapters,
   liveContent,
+  livePlainText,
 }) => {
   const { settings, updateSettings } = useApp();
   const sig = settings.signature || {
@@ -91,33 +96,20 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
     });
   }, [exportScope, chapters, doc, bookTitle, liveContent]);
 
-  const getPlainText = () => {
-    let text = `${effectiveTitle.toUpperCase()}\n`;
-    if (bookSubtitle) text += `${bookSubtitle}\n`;
-    text += `By ${author}\n\n`;
-    text += `========================================\n\n`;
-
-    sectionsToExport.forEach((sec, idx) => {
-      if (sectionsToExport.length > 1 && sec.title) {
-        text += `\n${sec.title.toUpperCase()}\n----------------------------------------\n\n`;
-      }
-      const blocks = parseHtmlToBlocks(sec.contentHtml || '');
-      text += blocks.map((b) => b.text).join('\n\n');
-      if (idx < sectionsToExport.length - 1) {
-        text += '\n\n* * *\n\n';
-      }
-    });
-
-    if (exportPlacement === 'bottom' || exportPlacement === 'both') {
-      text += `\n\n========================================\n`;
-      text += `Signed: ${typedName}\n`;
-      text += `Date: ${new Date().toLocaleDateString()}\n`;
+  const getExactPlainText = () => {
+    // If live text directly from TipTap is available for the current document, return it byte-for-byte!
+    if (livePlainText !== undefined && (exportScope === 'chapter' || !chapters || chapters.length <= 1)) {
+      return livePlainText;
     }
-    return text;
+
+    // Otherwise, extract exact text from each section preserving every single whitespace
+    return sectionsToExport
+      .map((sec) => htmlToExactPlainText(sec.contentHtml || ''))
+      .join('\n');
   };
 
   const handleCopyText = () => {
-    navigator.clipboard.writeText(getPlainText());
+    navigator.clipboard.writeText(getExactPlainText());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -141,7 +133,7 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
     const key = mode === 'share' ? 'txt-share' : 'txt';
     setIsExporting(key);
     try {
-      const text = getPlainText();
+      const text = getExactPlainText();
       const filename = `${effectiveTitle.replace(/\s+/g, '_')}.txt`;
       const res = await exportManuscriptFile({
         filename,
@@ -162,33 +154,21 @@ export const ExportManuscriptModal: React.FC<ExportManuscriptModalProps> = ({
     const key = mode === 'share' ? 'md-share' : 'md';
     setIsExporting(key);
     try {
-      let md = `# ${effectiveTitle}\n\n`;
-      if (bookSubtitle) md += `*${bookSubtitle}*\n\n`;
-      md += `**Author:** ${author}  \n`;
-      md += `**Date:** ${new Date().toLocaleDateString()}  \n\n`;
-      md += `---\n\n`;
-
-      sectionsToExport.forEach((sec, idx) => {
-        if (sectionsToExport.length > 1 && sec.title) {
-          md += `\n\n## ${sec.title}\n\n`;
-        }
-        const blocks = parseHtmlToBlocks(sec.contentHtml || '');
-        blocks.forEach((b) => {
-          if (b.type === 'h1') md += `# ${b.text}\n\n`;
-          else if (b.type === 'h2') md += `## ${b.text}\n\n`;
-          else if (b.type === 'h3') md += `### ${b.text}\n\n`;
-          else if (b.type === 'quote') md += `> ${b.text}\n\n`;
-          else if (b.type === 'li') md += `${b.text}\n`;
-          else md += `${b.text}\n\n`;
+      let md = '';
+      if (sectionsToExport.length === 1) {
+        md = getExactPlainText();
+      } else {
+        sectionsToExport.forEach((sec, idx) => {
+          if (sec.title) {
+            md += `## ${sec.title}\n\n`;
+          }
+          md += htmlToExactPlainText(sec.contentHtml || '');
+          if (idx < sectionsToExport.length - 1) {
+            md += '\n\n* * *\n\n';
+          }
         });
-        if (idx < sectionsToExport.length - 1) {
-          md += '* * *\n\n';
-        }
-      });
-
-      if (exportPlacement === 'bottom' || exportPlacement === 'both') {
-        md += `\n\n---\n\n*Signed by ${typedName}*\n`;
       }
+
       const filename = `${effectiveTitle.replace(/\s+/g, '_')}.md`;
       const res = await exportManuscriptFile({
         filename,
